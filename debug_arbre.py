@@ -1,11 +1,9 @@
 # =============================================================================
 # Débogueur de l'arbre : contrôles numériques et dessin SVG.
 #
-# À quoi sert ce module ?
-#     Il vérifie qu'un arbre construit par ``arbre_binomial.py`` est cohérent
-#     (liens, probabilités, moments, valeurs de l'option) et le dessine en
-#     SVG pour pouvoir l'inspecter dans un navigateur. La page « Arbre &
-#     diagnostics » de l'interface Streamlit l'utilise.
+# Vérifie qu'un arbre construit par ``arbre_binomial.py`` est cohérent
+# (liens, probabilités, moments, valeurs de l'option) et le dessine en
+# SVG pour pouvoir l'inspecter dans un navigateur. 
 #
 # Deux usages complémentaires :
 #
@@ -13,10 +11,6 @@
 #   d'erreurs. Il convient aussi aux grands arbres, sans fenêtre graphique.
 # * ``DebugTree(tree).export_svg("arbre.svg")`` produit un dessin vectoriel :
 #   on peut ouvrir le fichier dans un navigateur et zoomer sans pixellisation.
-#
-# Comme le demande le cours (p. 18), aucun tableau, dictionnaire ou liste de
-# nœuds ne sert à accéder à l'arbre : on suit uniquement les liens du tronc et
-# les voisins ``above``/``below``.
 # =============================================================================
 """Débogueur de l'arbre : contrôles numériques et dessin SVG."""
 
