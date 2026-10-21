@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+# Fichiers produits en lançant les scripts seuls (python convergence.py, ...).
+convergence_resultats.txt
+convergence*.png
+debug_arbre.svg
+resultats/
