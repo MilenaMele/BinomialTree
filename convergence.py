@@ -1,12 +1,7 @@
 # =============================================================================
 # Convergence de l'arbre vers Black-Scholes.
 #
-# À quoi sert ce module ?
-#     Il fournit le prix Black-Scholes européen (avec rendement continu q),
-#     utilisé comme référence exacte par l'interface (pages « Prix » et
-#     « Convergence »). Lancé seul (``python convergence.py``), il price aussi
-#     un call européen pour de nombreux N et trace l'écart à Black-Scholes.
-#
+# Fournit le prix Black-Scholes européen (avec rendement continu q).
 # Pas de dividende cash ici, sinon Black-Scholes n'est plus une référence exacte.
 # =============================================================================
 """Convergence de l'arbre vers Black-Scholes."""
