@@ -12,25 +12,18 @@
 #     * vanna        : dérivée croisée ∂²V/∂S∂σ = dérivée du delta en σ ;
 #     * theta        : variation du prix quand un jour passe (maturité fixe).
 #
-#     Il donne aussi l'« autre astuce » du cours pour delta et gamma : lire
-#     les valeurs de l'option sur trois nœuds voisins, sans reconstruire
-#     d'arbre, et les grecques exactes de Black-Scholes pour comparaison.
-#
 # Chaque prix décalé reconstruit un arbre complet : c'est du Python pur,
 # sans Streamlit, utilisable seul (``python grecques.py``).
 # =============================================================================
 """Grecques de l'option par différences finies sur l'arbre (cours p. 17)."""
 
-# Imports : bibliothèque standard, numpy puis modules du projet.
+# Imports : bibliothèque standard puis moteur de l'arbre.
 from __future__ import annotations
 
 import datetime as dt
 import gc
-from math import exp, log, sqrt
-from statistics import NormalDist
+from math import exp, log
 from typing import Callable
-
-import numpy as np
 
 from arbre_binomial import Market, Model, Option, Tree
 
@@ -224,127 +217,16 @@ class TreeGreeks:
 
 
 # -----------------------------------------------------------------------------
-# AUTRE ASTUCE DU COURS : delta et gamma lus sur trois nœuds de l'arbre.
-# -----------------------------------------------------------------------------
-# Trois nœuds voisins (haut, milieu, bas) de la colonne du pas 2
-def _three_nodes(tree: Tree) -> tuple:
-    """Tronc du pas 2 et ses deux voisins, atteints par les liens directs."""
-    trunk = tree.root.next_trunk.next_trunk if tree.model.nb_steps >= 2 else None
-    if trunk is None or trunk.above is None or trunk.below is None:
-        raise ValueError("Il faut au moins 2 pas et 3 nœuds au pas 2 pour cette méthode.")
-    return trunk.above, trunk, trunk.below
-
-
-# Delta et gamma déduits des valeurs déjà calculées dans l'arbre
-def tree_node_delta_gamma(tree: Tree) -> tuple[float, float]:
-    """Delta et gamma sans reconstruire d'arbre (cours p. 17, « autre astuce »).
-
-    Le cours ajoute des nœuds autour de la racine ; ici on lit les trois
-    nœuds du pas 2, qui entourent le spot. C'est une estimation à t = 2Δt,
-    très proche de t = 0 quand N est grand. Aucun vega/vomma par ce moyen.
-    """
-    tree.price()
-    up, mid, down = _three_nodes(tree)
-    s_up, s_mid, s_down = up.spot_price, mid.spot_price, down.spot_price
-    v_up, v_mid, v_down = up.option_value, mid.option_value, down.option_value
-    delta = (v_up - v_down) / (s_up - s_down)
-    # Gamma : variation des deux pentes, divisée par la demi-distance.
-    slope_up = (v_up - v_mid) / (s_up - s_mid)
-    slope_down = (v_mid - v_down) / (s_mid - s_down)
-    gamma = (slope_up - slope_down) / ((s_up - s_down) / 2)
-    return float(delta), float(gamma)
-
-
-# -----------------------------------------------------------------------------
-# RÉFÉRENCE : grecques exactes de Black-Scholes (européenne, sans cash).
-# -----------------------------------------------------------------------------
-# Quantités d1, d2 et facteurs d'actualisation de Black-Scholes
-def _black_terms(market: Market, strike: float, maturity: float) -> dict[str, float]:
-    """d1, d2, densité n(d1) et actualisations exp(−qT), exp(−rT)."""
-    sigma, sqrt_t = market.vol, sqrt(maturity)
-    d1 = ((log(market.spot / strike) + (market.rate - market.dividend_yield
-                                         + sigma**2 / 2) * maturity) / (sigma * sqrt_t))
-    d2 = d1 - sigma * sqrt_t
-    return {"d1": d1, "d2": d2, "n_d1": NormalDist().pdf(d1), "sqrt_t": sqrt_t,
-            "eq": exp(-market.dividend_yield * maturity), "er": exp(-market.rate * maturity)}
-
-
-# Theta annuel de Black-Scholes (∂V/∂t, le temps qui passe)
-def _black_theta_year(market: Market, strike: float, terms: dict[str, float],
-                      is_call: bool) -> float:
-    """Theta par an : terme de volatilité + termes de taux et de dividende."""
-    N = NormalDist().cdf
-    sign = 1 if is_call else -1
-    decay = -market.spot * terms["eq"] * terms["n_d1"] * market.vol / (2 * terms["sqrt_t"])
-    carry = (-sign * market.rate * strike * terms["er"] * N(sign * terms["d2"])
-             + sign * market.dividend_yield * market.spot * terms["eq"]
-             * N(sign * terms["d1"]))
-    return decay + carry
-
-
-# Les six grecques de Black-Scholes, dans les mêmes unités que l'arbre
-def black_scholes_greeks(market: Market, option: Option,
-                         pricing_date: dt.date) -> dict[str, float]:
-    """Grecques exactes d'une européenne avec rendement continu q, sans cash."""
-    maturity = (option.maturity - pricing_date).days / 365.0
-    if market.vol <= 0 or option.strike <= 0 or maturity <= 0:
-        raise ValueError("Black-Scholes demande σ > 0, K > 0 et une maturité future.")
-    terms = _black_terms(market, option.strike, maturity)
-    is_call = option.type.lower() == "call"
-    N = NormalDist().cdf
-    delta = terms["eq"] * (N(terms["d1"]) if is_call else N(terms["d1"]) - 1)
-    vega_unit = market.spot * terms["eq"] * terms["n_d1"] * terms["sqrt_t"]
-    # Mêmes conventions que TreeGreeks : vol en points, theta par jour.
-    return {
-        "delta": delta,
-        "gamma": terms["eq"] * terms["n_d1"] / (market.spot * market.vol * terms["sqrt_t"]),
-        "vega": vega_unit * VOL_POINT,
-        "vomma": vega_unit * terms["d1"] * terms["d2"] / market.vol * VOL_POINT**2,
-        "vanna": -terms["eq"] * terms["n_d1"] * terms["d2"] / market.vol * VOL_POINT,
-        "theta": _black_theta_year(market, option.strike, terms, is_call) / 365.0,
-    }
-
-
-# -----------------------------------------------------------------------------
-# COUVERTURE : approximation de Taylor de la variation de valeur.
-# -----------------------------------------------------------------------------
-# Variation de prix estimée à partir des grecques (développement de Taylor)
-def taylor_pnl(greeks: dict[str, float], spot_move: float, vol_move_points: float,
-               days: int) -> dict[str, float]:
-    """dV ≈ Δ dS + ½ Γ dS² + vega dσ + ½ vomma dσ² + vanna dS dσ + θ jours.
-
-    ``vol_move_points`` est en points de vol (2 = +2 %). Renvoie chaque terme
-    et le P&L d'un portefeuille delta-neutre (option − Δ actions).
-    """
-    terms = {
-        "delta": greeks["delta"] * spot_move,
-        "gamma": 0.5 * greeks["gamma"] * spot_move**2,
-        "vega": greeks["vega"] * vol_move_points,
-        "vomma": 0.5 * greeks["vomma"] * vol_move_points**2,
-        "vanna": greeks["vanna"] * spot_move * vol_move_points,
-        "theta": greeks["theta"] * days,
-    }
-    terms["total"] = float(np.sum(list(terms.values())))
-    # La couverture delta annule le terme du premier ordre en spot.
-    terms["hedged_total"] = terms["total"] - terms["delta"]
-    return terms
-
-
-# -----------------------------------------------------------------------------
-# Lancement autonome (sans Streamlit) : comparaison arbre / Black-Scholes.
+# Lancement autonome (sans Streamlit) : grecques d'un exemple.
 # -----------------------------------------------------------------------------
 def main() -> None:
-    """Grecques d'un call européen : arbre (N=400) et Black-Scholes."""
+    """Prix et grecques d'un call européen (N = 400), affichés dans le terminal."""
     market = Market(spot=100, rate=0.03, vol=0.20, dividend_yield=0.02)
     option = Option(101, dt.date(2027, 9, 2), "Call", "European")
-    model = Model(dt.date(2026, 9, 15), 400)
-    tree_values = TreeGreeks(market, option, model).all()
-    black = black_scholes_greeks(market, option, model.pricing_date)
-    # Une ligne par grecque : arbre, Black-Scholes et écart.
-    print(f"{'Grecque':<8}{'Arbre':>14}{'Black-Scholes':>16}{'Écart':>12}")
-    for name in GREEK_NAMES:
-        gap = tree_values[name] - black[name]
-        print(f"{name:<8}{tree_values[name]:>14.6f}{black[name]:>16.6f}{gap:>12.2e}")
+    values = TreeGreeks(market, option, Model(dt.date(2026, 9, 15), 400)).all()
+    # Une ligne par grandeur.
+    for name, value in values.items():
+        print(f"{name:<8}{value:>14.6f}")
 
 
 if __name__ == "__main__":

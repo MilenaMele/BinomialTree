@@ -86,28 +86,11 @@ Comme dans le cours, le spot sans dividende vaut `S0' = F(T) × exp(−rT)`, où
 
 ## Grecques et couverture delta (cours p. 17)
 
-La page **Grecques & couverture** calcule, pour le contrat du formulaire (même N, même pruning) :
+La page **Prix & comparaison** affiche les six grecques du contrat (même N, même pruning) : delta, gamma, vega, vomma, vanna (vol en points) et theta (par jour). Elles sont calculées dans `grecques.py` par différences finies : comme dans le cours, la fonction de pricing est passée à la classe `OneDimDerivative` (`first`, `second`). Le spot est décalé d'un cran de grille (S×α et S/α, les nœuds voisins de la racine) pour un gamma correct.
 
-| Grecque | Définition | Unité affichée |
-|---|---|---|
-| delta | ∂V/∂S | € par € de spot (nombre d'actions de couverture) |
-| gamma | ∂²V/∂S² | variation du delta pour 1 € de spot |
-| vega | ∂V/∂σ | € pour +1 point de volatilité |
-| vomma | ∂²V/∂σ² | variation du vega pour +1 point de volatilité |
-| vanna | ∂²V/∂S∂σ | variation du delta pour +1 point de volatilité |
-| theta | V(t + 1 jour) − V(t) | € par jour (maturité fixe) |
+Le champ **Nombre d'options achetées** (négatif si vendues) donne directement la couverture : delta de la position = X × Δ, à compenser en achetant ou vendant −X × Δ unités de sous-jacent.
 
-Méthode (module `grecques.py`) : comme dans le cours, la fonction de pricing est passée en paramètre à la classe `OneDimDerivative`, qui fait des différences finies centrées (`first`, `second`). Chaque prix décalé reconstruit un arbre.
-
-- **Spot** : décalé d'un cran de grille, `S×α` et `S/α` (les « nœuds autour de la racine » du cours), en dérivant par rapport à `ln S`. Un décalage arbitraire (1 %) déplace la grille par rapport au strike et donne un gamma faux, parfois d'un facteur 2.
-- **Volatilité** : ±1 point par défaut. Le vanna est la dérivée en σ du delta, chaque delta étant calculé sur la grille de son propre arbre.
-- **Nœuds voisins** : delta et gamma lus aussi sur les trois nœuds du pas 2, sans nouvel arbre (« autre astuce » du cours).
-- **Black-Scholes** : grecques exactes affichées pour une européenne sans cash actif.
-- **Variable de contrôle** (américaine sans cash) : grecque américaine + (Black-Scholes européenne − arbre européen). L'erreur de discrétisation de l'arbre varie avec σ et biaise fortement le vomma brut, quel que soit N ; elle est presque identique pour l'américaine et l'européenne, donc cette correction l'enlève.
-
-La page donne aussi la **couverture delta** (nombre d'actions à acheter/vendre par option), le **P&L après un choc** (dS, dσ, jours écoulés) par développement de Taylor comparé au repricing exact, pour l'option seule et pour le portefeuille « option − Δ actions », et les courbes **delta / gamma en fonction du spot**.
-
-En ligne de commande : `python grecques.py` compare les grecques de l'arbre à Black-Scholes pour un call européen.
+Limite : le vomma de l'arbre est peu fiable (l'erreur de discrétisation varie avec σ) ; préférer la valeur Black-Scholes pour une européenne.
 
 ## Comment le code est relié à Streamlit
 
@@ -117,14 +100,14 @@ Seul `app.py` importe Streamlit. Les modules de calcul (`arbre_binomial.py`, `gr
 
 | Fichier | Rôle |
 |---|---|
-| `app.py` | Interface Streamlit en huit pages et paramètres interactifs |
+| `app.py` | Interface Streamlit en sept pages et paramètres interactifs |
 | `interface_calculs.py` | Adaptation du moteur en résultats tabulaires, validation des paramètres et études pour l'interface |
 | `interface_exports.py` | Préparation des graphiques PNG/SVG, du CSV et du scénario JSON dans un ZIP temporaire |
 | `LANCER_STREAMLIT.bat` | Lancement Windows avec sélection d'un Python valide et installation des dépendances |
 | `arbre_binomial.py` | Données, construction du sous-jacent, pricing et profils numériques |
 | `profils_option.py` | Courbes des pages 22–23 et export des résultats en CSV |
 | `debug_arbre.py` | Vérification des liens, masses et moments ; export SVG |
-| `grecques.py` | Delta, gamma, vega, vomma, vanna, theta par différences finies (cours p. 17) et grecques de Black-Scholes |
+| `grecques.py` | Delta, gamma, vega, vomma, vanna, theta par différences finies (cours p. 17) |
 | `convergence.py` | Comparaison européenne à Black-Scholes, sans cash, reprise du fichier joint |
 | `CLAUDE.md` | Règles de style imposées par le professeur (longueur des méthodes, typage, commentaires) |
 

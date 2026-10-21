@@ -33,7 +33,7 @@ Commentaires et docstrings sont rédigés en français.
 | Fichier | Rôle |
 |---|---|
 | `arbre_binomial.py` | Moteur : `Market`, `Option`, `Model`, `Node`, `TrunkNode`, `Tree` (construction, pricing, profils) |
-| `grecques.py` | Grecques par différences finies (`OneDimDerivative`, cours p. 17) et Black-Scholes |
+| `grecques.py` | Grecques par différences finies (`OneDimDerivative`, cours p. 17) |
 | `profils_option.py` | Figures Matplotlib et CSV des profils par date |
 | `debug_arbre.py` | Contrôles numériques de l'arbre et export SVG |
 | `convergence.py` | Prix Black-Scholes et étude de convergence |
