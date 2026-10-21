@@ -1,17 +1,12 @@
 """Interface Streamlit du pricer (seul fichier qui utilise Streamlit).
 
-À quoi sert ce module ?
-    Il affiche l'application web : formulaire des paramètres dans la barre
-    latérale, puis sept pages (prix, valeur & exercice, arbre, convergence,
-    pruning, dividendes & taux, guide). Il ne calcule rien lui-même : il
-    appelle ``interface_calculs`` (qui appelle le moteur ``arbre_binomial``)
-    et dessine les tableaux renvoyés avec Plotly.
+Il affiche l'application web : formulaire des paramètres dans la barre
+latérale, puis sept pages (prix, valeur & exercice, arbre, convergence,
+pruning, dividendes & taux, guide). 
+appelle ``interface_calculs`` (qui appelle le moteur ``arbre_binomial``)
+et dessine les tableaux renvoyés avec Plotly.
 
 Lancer avec : python -m streamlit run app.py
-
-Rappel sur Streamlit : à chaque clic, Streamlit ré-exécute ce script de
-haut en bas. ``st.session_state`` garde les valeurs d'un passage à l'autre
-et ``st.cache_data`` évite de refaire un calcul identique.
 """
 
 from __future__ import annotations
@@ -29,19 +24,18 @@ from typing import Callable
 # Définir le backend AVANT d'importer les modules de calcul qui utilisent pyplot.
 os.environ.setdefault("MPLBACKEND", "Agg")
 
-import numpy as np  # noqa: E402  (import après le choix du backend)
-import pandas as pd  # noqa: E402
-import plotly.graph_objects as go  # noqa: E402
-import streamlit as st  # noqa: E402
-import streamlit.components.v1 as components  # noqa: E402
+import numpy as np  
+import pandas as pd  
+import plotly.graph_objects as go  
+import streamlit as st 
+import streamlit.components.v1 as components  
 
-from interface_calculs import (  # noqa: E402
+from interface_calculs import ( 
     EXERCISE_SCENARIOS, Parameters, calculate_summary, check_tree, convergence_study,
     debug_tree, dividend_study, exercise_comparison, has_active_cash, pruning_study,
     rate_study, strike_study,
 )
-from interface_exports import profile_archive, scenario_json  # noqa: E402
-
+from interface_exports import profile_archive, scenario_json  
 
 # Pages de la navigation, palette des graphiques et bornes des dates.
 PAGES = (
@@ -54,7 +48,7 @@ DATE_MIN, DATE_MAX = dt.date(1900, 1, 1), dt.date(2100, 12, 31)
 PRESETS = ("Put américain / dividende cash", "Call européen / Black-Scholes",
            "Call américain / taux négatif")
 EXERCISE_LABELS = {"European": "européen", "American": "américain"}
-# Les trois contrats du cours (p. 23) sont cochés par défaut.
+# Les trois types de contrats sont cochés par défaut.
 DEFAULT_SCENARIOS = ("american_dividends", "american_no_dividend", "european_no_dividend")
 CALCULATION_ERRORS = (ValueError, ArithmeticError, RuntimeError, OSError)
 
