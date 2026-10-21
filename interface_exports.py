@@ -1,10 +1,9 @@
 # =============================================================================
 # Téléchargements de l'interface : scénario JSON et archive ZIP des profils.
 #
-# À quoi sert ce module ?
-#     Il prépare les fichiers que l'utilisateur télécharge depuis Streamlit :
-#     les paramètres du scénario en JSON, et un ZIP contenant les graphiques
-#     PNG/SVG et le CSV produits par ``profils_option.py``.
+# Prépare les fichiers que l'utilisateur télécharge depuis Streamlit :
+# les paramètres du scénario en JSON, et un ZIP contenant les graphiques
+# PNG/SVG et le CSV produits par ``profils_option.py``.
 #
 # Chaque appel possède son propre dossier temporaire, supprimé à la fin :
 # deux utilisateurs ne peuvent pas écraser les résultats l'un de l'autre.
