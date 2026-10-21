@@ -1,19 +1,12 @@
 # =============================================================================
 # Couche de calcul de l'interface, indépendante de Streamlit.
 #
-# À quoi sert ce module ?
-#     Il fait le lien entre les champs de l'écran et le moteur
-#     ``arbre_binomial.py`` : il valide les paramètres, construit les arbres,
-#     lance les études (convergence, pruning, dividendes, taux, comparaison
-#     des exercices) et renvoie des tableaux pandas prêts à afficher.
+# Il fait le lien entre les champs de l'écran et le moteur
+# ``arbre_binomial.py`` : il valide les paramètres, construit les arbres,
+# lance les études (convergence, pruning, dividendes, taux, comparaison
+# des exercices) et renvoie des tableaux pandas prêts à afficher.
 #
-# Il ne contient ni widget, ni graphique, ni formule de pricing : ``Tree``
-# reste responsable des prix et des probabilités ; ``Convergence`` fournit
-# la formule de Black-Scholes. On peut donc tester ces résultats sans
-# navigateur. Les fonctions ne renvoient jamais l'arbre ni ses nœuds : un
-# cache Streamlit peut les mémoriser sans garder un grand graphe en mémoire.
 # =============================================================================
-"""Couche de calcul de l'interface, indépendante de Streamlit."""
 
 # Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
