@@ -31,8 +31,7 @@ import pandas as pd
 # Modules du projet : moteur, Black-Scholes et débogueur.
 from arbre_binomial import Market, Model, Option, Tree
 from convergence import Convergence
-from debug_arbre import DebugTree
-from dessin_compact import CompactTreeSvg
+from debug_arbre import CompactTreeSvg, DebugTree
 from grecques import TreeGreeks
 
 
