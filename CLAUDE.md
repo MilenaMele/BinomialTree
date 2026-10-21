@@ -42,7 +42,7 @@ Contraintes du cours à préserver :
 
 - Aucun conteneur (liste, dictionnaire, tableau) de **nœuds** : on parcourt
   l'arbre uniquement par les liens `next_trunk`, `above`/`below`,
-  `next_up`/`next_mid`/`next_down` (cours p. 18).
+  `next_up`/`next_mid`/`next_down` .
 - Les fonctions de `interface_calculs.py` ne renvoient jamais un `Tree` ni un
   nœud (seulement des nombres et des DataFrames), pour le cache Streamlit.
 
