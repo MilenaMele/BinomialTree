@@ -1,14 +1,17 @@
-"""Téléchargements de l'interface : scénario JSON et archive ZIP des profils.
+# =============================================================================
+# Téléchargements de l'interface : scénario JSON et archive ZIP des profils.
+#
+# À quoi sert ce module ?
+#     Il prépare les fichiers que l'utilisateur télécharge depuis Streamlit :
+#     les paramètres du scénario en JSON, et un ZIP contenant les graphiques
+#     PNG/SVG et le CSV produits par ``profils_option.py``.
+#
+# Chaque appel possède son propre dossier temporaire, supprimé à la fin :
+# deux utilisateurs ne peuvent pas écraser les résultats l'un de l'autre.
+# =============================================================================
+"""Téléchargements de l'interface : scénario JSON et archive ZIP des profils."""
 
-À quoi sert ce module ?
-    Il prépare les fichiers que l'utilisateur télécharge depuis Streamlit :
-    les paramètres du scénario en JSON, et un ZIP contenant les graphiques
-    PNG/SVG et le CSV produits par ``profils_option.py``.
-
-Chaque appel possède son propre dossier temporaire, supprimé à la fin :
-deux utilisateurs ne peuvent pas écraser les résultats l'un de l'autre.
-"""
-
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 import gc
 import json
 from dataclasses import asdict
@@ -21,11 +24,13 @@ from interface_calculs import Parameters, make_tree
 from profils_option import OptionProfiles
 
 
+# Les dates ISO rendent un scénario lisible et reproductible
 def scenario_json(params: Parameters) -> str:
     """Les dates ISO rendent un scénario lisible et reproductible."""
     return json.dumps(asdict(params), default=str, ensure_ascii=False, indent=2)
 
 
+# Mettre les fichiers produits et les paramètres dans un ZIP en mémoire
 def _zip_files(files: dict[str, Path], params: Parameters) -> bytes:
     """Mettre les fichiers produits et les paramètres dans un ZIP en mémoire."""
     buffer = BytesIO()
@@ -36,6 +41,7 @@ def _zip_files(files: dict[str, Path], params: Parameters) -> bytes:
     return buffer.getvalue()
 
 
+# Retourner un ZIP en mémoire : 2 PNG, 2 SVG, données CSV et paramètres
 def profile_archive(params: Parameters) -> bytes:
     """Retourner un ZIP en mémoire : 2 PNG, 2 SVG, données CSV et paramètres.
 

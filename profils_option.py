@@ -1,31 +1,34 @@
-"""Courbes de valeur et d'exercice par date (cours, pages 22–23).
+# =============================================================================
+# Courbes de valeur et d'exercice par date (cours, pages 22–23).
+#
+# À quoi sert ce module ?
+#     À partir d'un arbre construit, il trace la valeur moyenne actualisée
+#     de l'option date par date et les probabilités d'exercice, puis les
+#     exporte en PNG/SVG et en CSV. L'interface l'utilise pour le bouton
+#     « Préparer les graphiques PNG/SVG » de la page « Valeur & exercice ».
+#
+# Le mot « valeur » désigne ici une MOYENNE PAR DATE dans l'arbre, et non
+# une courbe du prix en fonction du spot. Toutes les valeurs sont actualisées
+# à la date initiale ; toutes les probabilités sont risque-neutres (mesure Q).
+#
+# * ``exercise_region_probability`` : masse des nœuds où il faudrait exercer
+#   à cette date (courbe du PDF), même après un exercice théorique antérieur.
+# * ``first_exercise_probability`` : masse qui exerce POUR LA PREMIÈRE FOIS.
+# * ``cumulative_exercise_probability`` : cumul de la distribution précédente.
+#
+# Il ne faut donc PAS additionner les valeurs de la première courbe : un même
+# chemin peut passer plusieurs fois par une zone d'exercice.
+#
+# Exemple en ligne de commande :
+#
+#     python profils_option.py --steps 200 --output-dir resultats/profils
+#
+# Le moteur ``arbre_binomial.py`` fait tous les calculs financiers. Ce module
+# ne garde que des lignes de nombres, jamais un tableau de nœuds de l'arbre.
+# =============================================================================
+"""Courbes de valeur et d'exercice par date (cours, pages 22–23)."""
 
-À quoi sert ce module ?
-    À partir d'un arbre construit, il trace la valeur moyenne actualisée
-    de l'option date par date et les probabilités d'exercice, puis les
-    exporte en PNG/SVG et en CSV. L'interface l'utilise pour le bouton
-    « Préparer les graphiques PNG/SVG » de la page « Valeur & exercice ».
-
-Le mot « valeur » désigne ici une MOYENNE PAR DATE dans l'arbre, et non
-une courbe du prix en fonction du spot. Toutes les valeurs sont actualisées
-à la date initiale ; toutes les probabilités sont risque-neutres (mesure Q).
-
-* ``exercise_region_probability`` : masse des nœuds où il faudrait exercer
-  à cette date (courbe du PDF), même après un exercice théorique antérieur.
-* ``first_exercise_probability`` : masse qui exerce POUR LA PREMIÈRE FOIS.
-* ``cumulative_exercise_probability`` : cumul de la distribution précédente.
-
-Il ne faut donc PAS additionner les valeurs de la première courbe : un même
-chemin peut passer plusieurs fois par une zone d'exercice.
-
-Exemple en ligne de commande :
-
-    python profils_option.py --steps 200 --output-dir resultats/profils
-
-Le moteur ``arbre_binomial.py`` fait tous les calculs financiers. Ce module
-ne garde que des lignes de nombres, jamais un tableau de nœuds de l'arbre.
-"""
-
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
 
 import argparse
@@ -43,6 +46,7 @@ from matplotlib.ticker import PercentFormatter
 from arbre_binomial import Market, Model, Option, Tree
 
 
+# Champs lus dans une ligne scalaire renvoyée par le moteur
 class ProfileRow(Protocol):
     """Champs lus dans une ligne scalaire renvoyée par le moteur.
 
@@ -76,6 +80,7 @@ CSV_FIELDS = (
 )
 
 
+# Calcule, trace et exporte les profils d'un ``Tree``
 class OptionProfiles:
     """Calcule, trace et exporte les profils d'un ``Tree``.
 
@@ -92,6 +97,7 @@ class OptionProfiles:
         # Dernières lignes calculées (nombres seulement), None avant compute().
         self.results: tuple[ProfileRow, ...] | None = None
 
+    # Construire si nécessaire et demander un profil repricé au moteur
     def compute(self) -> tuple[ProfileRow, ...]:
         """Construire si nécessaire et demander un profil repricé au moteur.
 
@@ -104,6 +110,7 @@ class OptionProfiles:
             raise RuntimeError("Le moteur a renvoyé un profil vide.")
         return self.results
 
+    # Fournir les résultats ; lancer le calcul au premier besoin
     def rows(self) -> tuple[ProfileRow, ...]:
         """Fournir les résultats ; lancer le calcul au premier besoin."""
         if self.results is None:
@@ -125,6 +132,7 @@ class OptionProfiles:
             f"N={tree.model.nb_steps}, pruning={tree.model.pruning_threshold:g}"
         )
 
+    # Axe du temps, grille et repère de la date exacte du dividende cash
     def _decorate_time_axis(self, ax: Axes) -> None:
         """Axe du temps, grille et repère de la date exacte du dividende cash."""
         tree = self.tree
@@ -141,6 +149,7 @@ class OptionProfiles:
         ax.axvline(ex_time, color="0.45", linestyle=":", linewidth=1.2,
                    label=f"Dividende {tree.market.dividend_amount:g} le {ex_date:%d/%m/%Y}")
 
+    # Sauvegarder la même figure en bitmap et en format vectoriel
     @staticmethod
     def _save_figure(fig: Figure, output_dir: Path, stem: str) -> dict[str, Path]:
         """Sauvegarder la même figure en bitmap et en format vectoriel."""
@@ -170,6 +179,7 @@ class OptionProfiles:
         self._decorate_time_axis(ax)
         ax.legend(fontsize=9)
 
+    # Valeur vivante avant décision + flux STRICTEMENT antérieurs = prix
     def _draw_conservation(self, ax: Axes) -> None:
         """Valeur vivante avant décision + flux STRICTEMENT antérieurs = prix."""
         rows = self.rows()
@@ -189,6 +199,7 @@ class OptionProfiles:
         self._decorate_time_axis(ax)
         ax.legend(fontsize=9)
 
+    # Distinguer moyenne du PDF et valeur des contrats encore vivants
     def _value_figure(self) -> Figure:
         """Distinguer moyenne du PDF et valeur des contrats encore vivants."""
         fig, axes = plt.subplots(2, 1, figsize=(11, 9), constrained_layout=True)
@@ -216,6 +227,7 @@ class OptionProfiles:
                 "ne pas sommer cette courbe.", transform=ax.transAxes, va="top",
                 fontsize=9, bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none"})
 
+    # Distribution du premier exercice (probabilités PAR PAS)
     def _draw_first_exercise(self, ax: Axes) -> None:
         """Distribution du premier exercice (probabilités PAR PAS)."""
         rows = self.rows()
@@ -232,6 +244,7 @@ class OptionProfiles:
                    label="Premier exercice à maturité, payoff > 0")
         ax.set_title("Distribution du premier exercice : aucun double comptage")
 
+    # Probabilité cumulée d'avoir exercé et survie avant T
     def _draw_cumulative(self, ax: Axes) -> None:
         """Probabilité cumulée d'avoir exercé et survie avant T."""
         rows = self.rows()
@@ -249,6 +262,7 @@ class OptionProfiles:
         ax.set_title("Cumul et survie — expiration sans exercice à T : "
                      f"{maturity.survival_probability:.2%}")
 
+    # Axes en pourcentage ; plage adaptée pour les probabilités par pas
     def _format_probability_axes(self, axes: list[Axes]) -> None:
         """Axes en pourcentage ; plage adaptée pour les probabilités par pas."""
         maximum = max(row.first_exercise_probability for row in self.rows())
@@ -264,6 +278,7 @@ class OptionProfiles:
             self._decorate_time_axis(ax)
             ax.legend(fontsize=9, loc="upper left" if index == 2 else "best")
 
+    # Dessiner la zone brute, la première distribution, puis son cumul
     def _exercise_figure(self) -> Figure:
         """Dessiner la zone brute, la première distribution, puis son cumul."""
         fig, axes = plt.subplots(3, 1, figsize=(11, 12), constrained_layout=True)
@@ -296,6 +311,7 @@ class OptionProfiles:
                 writer.writerow(values)
         return csv_path
 
+    # Recalculer puis écrire les cinq fichiers et renvoyer leurs chemins
     def plot(self, output_dir: str | Path, show: bool = False) -> dict[str, Path]:
         """Recalculer puis écrire les cinq fichiers et renvoyer leurs chemins.
 
@@ -337,6 +353,7 @@ def _positive_int(text: str) -> int:
     return value
 
 
+# Seuil de pruning : refuse aussi NaN, l'infini et les valeurs hors [0, 1]
 def _threshold(text: str) -> float:
     """Seuil de pruning : refuse aussi NaN, l'infini et les valeurs hors [0, 1]."""
     try:
@@ -348,6 +365,7 @@ def _threshold(text: str) -> float:
     return value
 
 
+# Options de la ligne de commande
 def _parse_arguments() -> argparse.Namespace:
     """Options de la ligne de commande."""
     parser = argparse.ArgumentParser(description=__doc__,
@@ -364,6 +382,7 @@ def _parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# Démonstration reproductible : put américain avec dividende cash
 def main() -> None:
     """Démonstration reproductible : put américain avec dividende cash."""
     args = _parse_arguments()

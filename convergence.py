@@ -1,13 +1,17 @@
-"""Convergence de l'arbre vers Black-Scholes.
+# =============================================================================
+# Convergence de l'arbre vers Black-Scholes.
+#
+# À quoi sert ce module ?
+#     Il fournit le prix Black-Scholes européen (avec rendement continu q),
+#     utilisé comme référence exacte par l'interface (pages « Prix » et
+#     « Convergence »). Lancé seul (``python convergence.py``), il price aussi
+#     un call européen pour de nombreux N et trace l'écart à Black-Scholes.
+#
+# Pas de dividende cash ici, sinon Black-Scholes n'est plus une référence exacte.
+# =============================================================================
+"""Convergence de l'arbre vers Black-Scholes."""
 
-À quoi sert ce module ?
-    Il fournit le prix Black-Scholes européen (avec rendement continu q),
-    utilisé comme référence exacte par l'interface (pages « Prix » et
-    « Convergence »). Lancé seul (``python convergence.py``), il price aussi
-    un call européen pour de nombreux N et trace l'écart à Black-Scholes.
-
-Pas de dividende cash ici, sinon Black-Scholes n'est plus une référence exacte.
-"""
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 import datetime as dt
 import gc
 from math import exp, log, pi, sqrt
@@ -21,6 +25,7 @@ import numpy as np
 from arbre_binomial import Market, Model, Option, Tree
 
 
+# Référence Black-Scholes et étude de l'écart arbre − Black selon N
 class Convergence:
     """Référence Black-Scholes et étude de l'écart arbre − Black selon N."""
 
@@ -41,10 +46,12 @@ class Convergence:
         self.output = Path(__file__).resolve().parent
         self.results: np.ndarray | None = None
 
+    # Vrai pour un call, faux pour un put
     def _is_call(self) -> bool:
         """Vrai pour un call, faux pour un put."""
         return self.option.type.lower() == "call"
 
+    # Cas limites K=0 et sigma=0, traités avant les divisions par K ou sigma
     def _limit_price(self, strike: float) -> float | None:
         """Cas limites K=0 et sigma=0, traités avant les divisions par K ou sigma."""
         spot, rate = self.market.spot, self.market.rate
@@ -61,6 +68,7 @@ class Convergence:
             payoff = max(strike - terminal_spot, 0.0)
         return exp(-rate * maturity) * payoff
 
+    # Prix européen avec rendement continu ; pas d'approximation cash
     def black_price(self, strike: float) -> float:
         """Prix européen avec rendement continu ; pas d'approximation cash."""
         if not np.isfinite(strike) or strike < 0:
@@ -78,6 +86,7 @@ class Convergence:
             return S * exp(-q * T) * N(d1) - strike * exp(-r * T) * N(d2)
         return strike * exp(-r * T) * N(-d2) - S * exp(-q * T) * N(-d1)
 
+    # Constante C du « triangle rouge » : écart ≈ C / N
     def triangle_constant(self) -> float:
         """Constante C du « triangle rouge » : écart ≈ C / N.
 
@@ -92,6 +101,7 @@ class Convergence:
         return (exp(-r * T) * forward * sigma**2 * T
                 / (2 * sqrt(2 * pi) * sqrt(exp(sigma**2 * T) - 1)))
 
+    # Construire et pricer un arbre à N pas ; renvoie (prix, secondes)
     def _timed_price(self, n: int) -> tuple[float, float]:
         """Construire et pricer un arbre à N pas ; renvoie (prix, secondes)."""
         gc.collect()  # on vide la mémoire avant de chronométrer
@@ -101,6 +111,7 @@ class Convergence:
         price = tree.price()
         return price, perf_counter() - start
 
+    # Pour chaque N : prix de l'arbre, écart avec Black-Scholes et temps
     def run(self, steps: list[int]) -> None:
         """Pour chaque N : prix de l'arbre, écart avec Black-Scholes et temps."""
         if not steps:
@@ -124,6 +135,7 @@ class Convergence:
         print(f"Écart : {rows[-1][2]:.6f}")
         print(f"Constante du triangle C = {self.triangle_constant():.4f}")
 
+    # Trois graphiques : prix, écart × N et temps de calcul
     def plot(self) -> None:
         """Trois graphiques : prix, écart × N et temps de calcul."""
         if self.results is None:
@@ -148,6 +160,7 @@ class Convergence:
         axes[2].legend()
         fig.savefig(self.output / "convergence.png", dpi=150)
 
+    # Écart arbre − Black en fonction du strike, pour N = 10 et 100
     def plot_strike(self) -> None:
         """Écart arbre − Black en fonction du strike, pour N = 10 et 100."""
         strikes = np.linspace(80, 120, 161)
@@ -170,6 +183,7 @@ class Convergence:
         fig.savefig(self.output / "convergence_strike.png", dpi=150)
 
 
+# Étude complète : tous les N jusqu'à 300 puis par paquets jusqu'à 1000
 def main() -> None:
     """Étude complète : tous les N jusqu'à 300 puis par paquets jusqu'à 1000."""
     option = Option(strike=101, maturity=dt.date(2027, 9, 2), type="Call",

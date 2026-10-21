@@ -1,18 +1,21 @@
-"""Couche de calcul de l'interface, indépendante de Streamlit.
+# =============================================================================
+# Couche de calcul de l'interface, indépendante de Streamlit.
+#
+# À quoi sert ce module ?
+#     Il fait le lien entre les champs de l'écran et le moteur
+#     ``arbre_binomial.py`` : il valide les paramètres, construit les arbres,
+#     lance les études (convergence, pruning, dividendes, taux, comparaison
+#     des exercices) et renvoie des tableaux pandas prêts à afficher.
+#
+# Il ne contient ni widget, ni graphique, ni formule de pricing : ``Tree``
+# reste responsable des prix et des probabilités ; ``Convergence`` fournit
+# la formule de Black-Scholes. On peut donc tester ces résultats sans
+# navigateur. Les fonctions ne renvoient jamais l'arbre ni ses nœuds : un
+# cache Streamlit peut les mémoriser sans garder un grand graphe en mémoire.
+# =============================================================================
+"""Couche de calcul de l'interface, indépendante de Streamlit."""
 
-À quoi sert ce module ?
-    Il fait le lien entre les champs de l'écran et le moteur
-    ``arbre_binomial.py`` : il valide les paramètres, construit les arbres,
-    lance les études (convergence, pruning, dividendes, taux, comparaison
-    des exercices) et renvoie des tableaux pandas prêts à afficher.
-
-Il ne contient ni widget, ni graphique, ni formule de pricing : ``Tree``
-reste responsable des prix et des probabilités ; ``Convergence`` fournit
-la formule de Black-Scholes. On peut donc tester ces résultats sans
-navigateur. Les fonctions ne renvoient jamais l'arbre ni ses nœuds : un
-cache Streamlit peut les mémoriser sans garder un grand graphe en mémoire.
-"""
-
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
 
 import datetime as dt
@@ -28,8 +31,10 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 from typing import Callable, Literal
 
+# Paquet externe (tableaux de résultats).
 import pandas as pd
 
+# Modules du projet : moteur, Black-Scholes et débogueur.
 from arbre_binomial import Market, Model, Option, Tree
 from convergence import Convergence
 from debug_arbre import DebugTree
@@ -62,6 +67,7 @@ def _finite_number(name: str, value: float) -> float:
     return float(value)
 
 
+# Une grille comporte un entier de pas, sans arrondir 20,5 vers 20
 def _validate_steps(value: int, maximum: int = MAX_STEPS) -> int:
     """Une grille comporte un entier de pas, sans arrondir 20,5 vers 20."""
     if isinstance(value, bool) or not isinstance(value, Integral) or not 1 <= value <= maximum:
@@ -69,6 +75,7 @@ def _validate_steps(value: int, maximum: int = MAX_STEPS) -> int:
     return int(value)
 
 
+# Seuil de pruning fini, compris entre 0 et 1
 def _validate_threshold(value: float) -> float:
     """Seuil de pruning fini, compris entre 0 et 1."""
     value = _finite_number("Le seuil de pruning", value)
@@ -77,12 +84,14 @@ def _validate_threshold(value: float) -> float:
     return value
 
 
+# datetime hérite de date en Python, mais le moteur demande une date seule
 def _validate_date(name: str, value: dt.date) -> None:
     """datetime hérite de date en Python, mais le moteur demande une date seule."""
     if not isinstance(value, dt.date) or isinstance(value, dt.datetime):
         raise ValueError(f"{name} doit être une date sans heure (datetime.date).")
 
 
+# Photographie immuable des paramètres saisis dans le formulaire
 @dataclass(frozen=True)
 class Parameters:
     """Photographie immuable des paramètres saisis dans le formulaire.
@@ -111,6 +120,7 @@ class Parameters:
     option_type: Literal["Call", "Put"]
     exercise_type: Literal["European", "American"]
 
+    # Nombres finis, spot positif, autres grandeurs positives ou nulles
     def _validate_market(self) -> None:
         """Nombres finis, spot positif, autres grandeurs positives ou nulles."""
         for name in ("spot", "strike", "rate", "vol", "dividend_yield", "dividend_amount"):
@@ -125,6 +135,7 @@ class Parameters:
         if self.dividend_amount > 0 and self.ex_dividend_date is None:
             raise ValueError("Un dividende cash positif nécessite sa date de détachement.")
 
+    # Vérifier tous les champs avant de commencer un calcul coûteux
     def validate(self) -> None:
         """Vérifier tous les champs avant de commencer un calcul coûteux."""
         _validate_date("La date de calcul", self.pricing_date)
@@ -153,6 +164,7 @@ def has_active_cash(params: Parameters) -> bool:
     )
 
 
+# Traduire les paramètres de l'écran dans l'API du moteur et construire
 def make_tree(params: Parameters, nb_steps: int | None = None,
               pruning_threshold: float | None = None) -> Tree:
     """Traduire les paramètres de l'écran dans l'API du moteur et construire.
@@ -177,6 +189,7 @@ def make_tree(params: Parameters, nb_steps: int | None = None,
     ).build()
 
 
+# Ne jamais afficher un prix NaN/inf comme s'il était un résultat valide
 def _price(tree: Tree) -> float:
     """Ne jamais afficher un prix NaN/inf comme s'il était un résultat valide."""
     value = float(tree.price())
@@ -185,6 +198,7 @@ def _price(tree: Tree) -> float:
     return value
 
 
+# Revaloriser quatre contrats sur UN seul arbre du même sous-jacent
 def _four_prices(tree: Tree) -> dict[str, float]:
     """Revaloriser quatre contrats sur UN seul arbre du même sous-jacent.
 
@@ -204,6 +218,7 @@ def _four_prices(tree: Tree) -> dict[str, float]:
     return result
 
 
+# Construire la référence européenne seulement lorsqu'elle est exacte
 def _black_scholes(params: Parameters) -> Convergence:
     """Construire la référence européenne seulement lorsqu'elle est exacte.
 
@@ -234,6 +249,7 @@ def _black_reference(params: Parameters) -> tuple[float | None, str]:
     return price, "Référence européenne exacte avec rendement continu q, sans cash actif."
 
 
+# Tableau des quatre prix call/put × européen/américain
 def _comparison_table(four: dict[str, float]) -> pd.DataFrame:
     """Tableau des quatre prix call/put × européen/américain."""
     return pd.DataFrame([
@@ -243,6 +259,7 @@ def _comparison_table(four: dict[str, float]) -> pd.DataFrame:
     ])
 
 
+# Contrôles de masse/valeur et probabilités résumées du profil
 def _profile_statistics(rows: tuple, price: float) -> dict:
     """Contrôles de masse/valeur et probabilités résumées du profil."""
     terminal = rows[-1]
@@ -258,6 +275,7 @@ def _profile_statistics(rows: tuple, price: float) -> dict:
     }
 
 
+# Prix, comparaison et profil du contrat choisi, à partir d'un arbre
 def _summary_of_tree(tree: Tree, params: Parameters) -> dict:
     """Prix, comparaison et profil du contrat choisi, à partir d'un arbre."""
     four = _four_prices(tree)
@@ -280,6 +298,7 @@ def _summary_of_tree(tree: Tree, params: Parameters) -> dict:
     return summary
 
 
+# Prix, comparaisons et profils correspondant au contrat choisi à l'écran
 def calculate_summary(params: Parameters) -> dict:
     """Prix, comparaisons et profils correspondant au contrat choisi à l'écran.
 
@@ -317,6 +336,7 @@ def _same_forward_without_dividend(params: Parameters, tree: Tree) -> Parameters
                    dividend_amount=0.0, ex_dividend_date=None)
 
 
+# Profil d'un contrat (même arbre, exercice imposé) au format long
 def _profile_frame(tree: Tree, exercise: str, label: str) -> pd.DataFrame:
     """Profil d'un contrat (même arbre, exercice imposé) au format long."""
     original = tree.option
@@ -336,6 +356,7 @@ def _profile_frame(tree: Tree, exercise: str, label: str) -> pd.DataFrame:
     })
 
 
+# Profils des scénarios demandés partageant le même arbre
 def _scenario_profiles(params: Parameters, keys: list[str],
                        suffix: str) -> list[pd.DataFrame]:
     """Profils des scénarios demandés partageant le même arbre."""
@@ -353,6 +374,7 @@ def _scenario_profiles(params: Parameters, keys: list[str],
         gc.collect()
 
 
+# Probabilité d'exercice et valeur moyenne par date pour plusieurs contrats
 def exercise_comparison(params: Parameters, keys: list[str]) -> pd.DataFrame:
     """Probabilité d'exercice et valeur moyenne par date pour plusieurs contrats.
 
@@ -384,12 +406,14 @@ def _study_values(name: str, values: list, maximum: int = MAX_STUDY_POINTS) -> l
     return list(values)
 
 
+# Liste de nombres de pas, chacun validé
 def _step_values(steps: list[int]) -> list[int]:
     """Liste de nombres de pas, chacun validé."""
     return [_validate_steps(value)
             for value in _study_values("La liste des nombres de pas", steps)]
 
 
+# Remplir une ligne d'étude ; un échec est noté au lieu d'arrêter l'étude
 def _guarded_row(row: dict, compute: Callable[[], dict]) -> dict:
     """Remplir une ligne d'étude ; un échec est noté au lieu d'arrêter l'étude."""
     start = perf_counter()
@@ -404,6 +428,7 @@ def _guarded_row(row: dict, compute: Callable[[], dict]) -> dict:
     return row
 
 
+# Prix à N pas et écart à Black-Scholes (brut et multiplié par N)
 def _convergence_point(params: Parameters, n: int, reference: float) -> dict:
     """Prix à N pas et écart à Black-Scholes (brut et multiplié par N)."""
     tree = make_tree(params, nb_steps=n)
@@ -412,6 +437,7 @@ def _convergence_point(params: Parameters, n: int, reference: float) -> dict:
             "scaled_error": (value - reference) * n, "node_count": tree.count_nodes()}
 
 
+# Isoler l'erreur de discrétisation : contrat EUROPÉEN, pruning nul
 def convergence_study(params: Parameters, steps: list[int]) -> pd.DataFrame:
     """Isoler l'erreur de discrétisation : contrat EUROPÉEN, pruning nul.
 
@@ -432,6 +458,7 @@ def convergence_study(params: Parameters, steps: list[int]) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
+# Un seul arbre pour N : on change seulement le strike et on reprice
 def _strike_rows(params: Parameters, n: int, strikes: list[float],
                  black: Convergence) -> list[dict]:
     """Un seul arbre pour N : on change seulement le strike et on reprice."""
@@ -451,6 +478,7 @@ def _strike_rows(params: Parameters, n: int, strikes: list[float],
         gc.collect()
 
 
+# Tracer l'erreur selon K ; ne construire qu'un seul arbre pour chaque N
 def strike_study(params: Parameters, strikes: list[float], steps: list[int]) -> pd.DataFrame:
     """Tracer l'erreur selon K ; ne construire qu'un seul arbre pour chaque N.
 
@@ -466,18 +494,21 @@ def strike_study(params: Parameters, strikes: list[float], steps: list[int]) -> 
     black = _black_scholes(params)
     european = replace(params, exercise_type="European", pruning_threshold=0.0)
     results = []
+    # Un arbre par N, réutilisé pour tous les strikes.
     for n in numbers:
         gc.collect()
         results.extend(_strike_rows(european, n, strike_values, black))
     return pd.DataFrame(results)
 
 
+# Compter les transitions coupées par liens directs, sans liste de nœuds
 def _pruned_count(tree: Tree) -> int:
     """Compter les transitions coupées par liens directs, sans liste de nœuds."""
     return sum(int(node.is_pruned)
                for trunk in tree.iter_columns() for node in tree.iter_column(trunk))
 
 
+# Prix, taille et nombre de coupes de l'arbre pour un seuil donné
 def _pruning_point(params: Parameters, n: int, threshold: float) -> dict:
     """Prix, taille et nombre de coupes de l'arbre pour un seuil donné."""
     tree = make_tree(params, nb_steps=n, pruning_threshold=threshold)
@@ -485,6 +516,7 @@ def _pruning_point(params: Parameters, n: int, threshold: float) -> dict:
             "pruned_count": _pruned_count(tree)}
 
 
+# Comparer les seuils au même arbre sans pruning, au N demandé
 def pruning_study(params: Parameters, thresholds: list[float], nb_steps: int) -> pd.DataFrame:
     """Comparer les seuils au même arbre sans pruning, au N demandé.
 
@@ -512,6 +544,7 @@ def pruning_study(params: Parameters, thresholds: list[float], nb_steps: int) ->
     return pd.DataFrame(results)
 
 
+# Quatre prix pour un marché modifié, et primes américaines si étude de taux
 def _four_contract_point(params: Parameters, field: str, value: float) -> dict:
     """Quatre prix pour un marché modifié, et primes américaines si étude de taux."""
     tree = None
@@ -527,6 +560,7 @@ def _four_contract_point(params: Parameters, field: str, value: float) -> dict:
         gc.collect()
 
 
+# Boucle commune : un arbre par marché, puis quatre rétropropagations
 def _four_contract_study(params: Parameters, field: str, values: list[float]) -> pd.DataFrame:
     """Boucle commune : un arbre par marché, puis quatre rétropropagations.
 
@@ -545,6 +579,7 @@ def _four_contract_study(params: Parameters, field: str, values: list[float]) ->
     return pd.DataFrame(results)
 
 
+# Changer seulement le cash ; garder le taux et q de l'écran
 def dividend_study(params: Parameters, amounts: list[float]) -> pd.DataFrame:
     """Changer seulement le cash ; garder le taux et q de l'écran."""
     params.validate()
@@ -558,6 +593,7 @@ def dividend_study(params: Parameters, amounts: list[float]) -> pd.DataFrame:
     return _four_contract_study(params, "dividend_amount", values)
 
 
+# Comparer taux positifs/négatifs et prime américain moins européen
 def rate_study(params: Parameters, rates: list[float]) -> pd.DataFrame:
     """Comparer taux positifs/négatifs et prime américain moins européen."""
     params.validate()
@@ -581,6 +617,7 @@ def _diagnostic(debugger: DebugTree, errors: int, report: str) -> dict:
     }
 
 
+# Contrôler puis dessiner ; les messages imprimés deviennent le rapport
 def _checked_svg(debugger: DebugTree, color_by: str, show_neighbors: bool) -> dict:
     """Contrôler puis dessiner ; les messages imprimés deviennent le rapport."""
     log = StringIO()
@@ -598,6 +635,7 @@ def _checked_svg(debugger: DebugTree, color_by: str, show_neighbors: bool) -> di
     return result
 
 
+# Construire un petit arbre indépendant, vérifier puis rendre son SVG
 def debug_tree(params: Parameters, steps: int, color_by: str, show_neighbors: bool) -> dict:
     """Construire un petit arbre indépendant, vérifier puis rendre son SVG.
 
@@ -611,6 +649,7 @@ def debug_tree(params: Parameters, steps: int, color_by: str, show_neighbors: bo
         raise ValueError("show_neighbors doit être un booléen.")
     tree = None
     gc.collect()
+    # Construire, pricer, puis contrôler et dessiner.
     try:
         tree = make_tree(params, nb_steps=n)
         _price(tree)
@@ -620,6 +659,7 @@ def debug_tree(params: Parameters, steps: int, color_by: str, show_neighbors: bo
         gc.collect()
 
 
+# Contrôler l'arbre au N principal sans produire un SVG gigantesque
 def check_tree(params: Parameters) -> dict:
     """Contrôler l'arbre au N principal sans produire un SVG gigantesque.
 

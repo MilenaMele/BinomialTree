@@ -1,22 +1,26 @@
-"""Débogueur de l'arbre : contrôles numériques et dessin SVG.
+# =============================================================================
+# Débogueur de l'arbre : contrôles numériques et dessin SVG.
+#
+# À quoi sert ce module ?
+#     Il vérifie qu'un arbre construit par ``arbre_binomial.py`` est cohérent
+#     (liens, probabilités, moments, valeurs de l'option) et le dessine en
+#     SVG pour pouvoir l'inspecter dans un navigateur. La page « Arbre &
+#     diagnostics » de l'interface Streamlit l'utilise.
+#
+# Deux usages complémentaires :
+#
+# * ``DebugTree(tree).check()`` parcourt tous les liens et renvoie un nombre
+#   d'erreurs. Il convient aussi aux grands arbres, sans fenêtre graphique.
+# * ``DebugTree(tree).export_svg("arbre.svg")`` produit un dessin vectoriel :
+#   on peut ouvrir le fichier dans un navigateur et zoomer sans pixellisation.
+#
+# Comme le demande le cours (p. 18), aucun tableau, dictionnaire ou liste de
+# nœuds ne sert à accéder à l'arbre : on suit uniquement les liens du tronc et
+# les voisins ``above``/``below``.
+# =============================================================================
+"""Débogueur de l'arbre : contrôles numériques et dessin SVG."""
 
-À quoi sert ce module ?
-    Il vérifie qu'un arbre construit par ``arbre_binomial.py`` est cohérent
-    (liens, probabilités, moments, valeurs de l'option) et le dessine en
-    SVG pour pouvoir l'inspecter dans un navigateur. La page « Arbre &
-    diagnostics » de l'interface Streamlit l'utilise.
-
-Deux usages complémentaires :
-
-* ``DebugTree(tree).check()`` parcourt tous les liens et renvoie un nombre
-  d'erreurs. Il convient aussi aux grands arbres, sans fenêtre graphique.
-* ``DebugTree(tree).export_svg("arbre.svg")`` produit un dessin vectoriel :
-  on peut ouvrir le fichier dans un navigateur et zoomer sans pixellisation.
-
-Comme le demande le cours (p. 18), aucun tableau, dictionnaire ou liste de
-nœuds ne sert à accéder à l'arbre : on suit uniquement les liens du tronc et
-les voisins ``above``/``below``.
-"""
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
 
 import argparse
@@ -71,6 +75,7 @@ _BOX_WIDTH, _BOX_HEIGHT = 174.0, 76.0
 _MARGIN_X, _TOP_Y, _STEP_WIDTH = 130.0, 230.0, 270.0
 
 
+# Coordonnées d'un nœud sur le dessin et écriture des textes SVG
 class _SvgCanvas:
     """Coordonnées d'un nœud sur le dessin et écriture des textes SVG."""
 
@@ -80,34 +85,41 @@ class _SvgCanvas:
         self.max_log = max_log
         self.scale_y = scale_y
 
+    # Abscisse : une colonne par pas de temps
     def x(self, node: Node) -> float:
         """Abscisse : une colonne par pas de temps."""
         return _MARGIN_X + node.step * _STEP_WIDTH
 
+    # Ordonnée logarithmique : deux voisins sont également espacés
     def y_spot(self, spot: float) -> float:
         """Ordonnée logarithmique : deux voisins sont également espacés."""
         return _TOP_Y + (self.max_log - math.log(spot)) * self.scale_y
 
+    # Ordonnée du nœud à partir de son prix
     def y(self, node: Node) -> float:
         """Ordonnée du nœud à partir de son prix."""
         return self.y_spot(node.spot_price)
 
+    # Balise <text> avec un libellé échappé (< > & sont protégés)
     @staticmethod
     def _text_markup(px: float, py: float, label: str, css: str, anchor: str) -> str:
         """Balise <text> avec un libellé échappé (< > & sont protégés)."""
         return (f'<text x="{px:.2f}" y="{py:.2f}" text-anchor="{anchor}" '
                 f'class="{css}">{escape(label)}</text>\n')
 
+    # Écrire un texte positionné sur le dessin
     def text(self, px: float, py: float, label: str, css: str = "",
              anchor: str = "middle") -> None:
         """Écrire un texte positionné sur le dessin."""
         self.stream.write(self._text_markup(px, py, label, css, anchor))
 
+    # Écriture brute d'un élément déjà formaté
     def write(self, markup: str) -> None:
         """Écriture brute d'un élément déjà formaté."""
         self.stream.write(markup)
 
 
+# Contrôler structure, probabilités, moments et valeurs de l'option
 class DebugTree:
     """Contrôler structure, probabilités, moments et valeurs de l'option.
 
@@ -130,6 +142,7 @@ class DebugTree:
         self._parent_mid: Node | None = None
         self._parent_down: Node | None = None
 
+    # Remettre à zéro les compteurs et les biais avant un contrôle
     def _reset_counters(self) -> None:
         """Remettre à zéro les compteurs et les biais avant un contrôle."""
         self.errors = self.node_count = self.branch_count = 0
@@ -151,12 +164,14 @@ class DebugTree:
         """Tolérance pour les sommes et moments, sans exiger l'égalité binaire."""
         return bool(np.isclose(actual, expected, rtol=1e-9, atol=1e-10))
 
+    # Compter une erreur et l'afficher avec la position du nœud
     def _error(self, message: str, node: Node | None = None) -> None:
         """Compter une erreur et l'afficher avec la position du nœud."""
         self.errors += 1
         location = "" if node is None else f"Pas {node.step}, S={node.spot_price:.6f} : "
         print("ERREUR :", location + message)
 
+    # Parcours borné : un cycle du tronc ne peut pas boucler indéfiniment
     def _columns(self) -> Iterator[TrunkNode]:
         """Parcours borné : un cycle du tronc ne peut pas boucler indéfiniment."""
         trunk = self.tree.root
@@ -172,6 +187,7 @@ class DebugTree:
         if trunk is not None or previous is not self.tree.last_trunk:
             raise ValueError("Fin du tronc incorrecte")
 
+    # Sommet de la colonne, avec détection d'un cycle de liens above
     @staticmethod
     def _top(trunk: TrunkNode) -> Node:
         """Sommet de la colonne, avec détection d'un cycle de liens above."""
@@ -184,6 +200,7 @@ class DebugTree:
                 raise ValueError(f"Cycle ou trop de voisins au-dessus au pas {trunk.step}")
         return node
 
+    # Valider la taille annoncée et la présence du tronc dans la chaîne
     def _column_nodes(self, trunk: TrunkNode) -> Iterator[Node]:
         """Valider la taille annoncée et la présence du tronc dans la chaîne."""
         if trunk.column_size < 1:
@@ -203,6 +220,7 @@ class DebugTree:
             raise ValueError(f"Colonne {trunk.step} : {count} nœuds ; "
                              f"taille annoncée {trunk.column_size}")
 
+    # Lire le drapeau du moteur, ou déduire le pruning de la forme du nœud
     def _is_pruned(self, node: Node) -> bool:
         """Lire le drapeau du moteur, ou déduire le pruning de la forme du nœud."""
         # Le repli permet d'inspecter d'anciens arbres sans drapeau.
@@ -232,6 +250,7 @@ class DebugTree:
         setattr(self, attribute, cursor)
         return cursor is child
 
+    # Un enfant existe si sa probabilité est non nulle, au pas suivant
     def _check_child(self, node: Node, trunk: TrunkNode, branch: str) -> None:
         """Un enfant existe si sa probabilité est non nulle, au pas suivant."""
         child = getattr(node, "next_" + branch)
@@ -246,6 +265,7 @@ class DebugTree:
         if not np.isfinite(child.spot_price) or child.spot_price <= 0:
             self._error(f"prix de l'enfant {branch} non positif ou non fini", node)
 
+    # Deux voisins binomiaux doivent partager un enfant commun
     def _check_recombination(self, node: Node) -> None:
         """Deux voisins binomiaux doivent partager un enfant commun."""
         # Un bord élagué conserve le même enfant partagé, mais ce lien
@@ -256,6 +276,7 @@ class DebugTree:
         if upper_down is None or upper_down is not lower_up:
             self._error("recombinaison binomiale incorrecte", node)
 
+    # Liens above/below réciproques et prix décroissants vers le bas
     def _check_neighbors(self, node: Node) -> None:
         """Liens above/below réciproques et prix décroissants vers le bas."""
         if node.above is not None:
@@ -270,6 +291,7 @@ class DebugTree:
         if self.tree.transition_type(node.step) == "binomial":
             self._check_recombination(node)
 
+    # Nombre de branches entrantes et somme π(parent) × p(parent,enfant)
     def _incoming(self, node: Node, previous: TrunkNode, branch: str) -> tuple[int, float]:
         """Nombre de branches entrantes et somme π(parent) × p(parent,enfant)."""
         attribute = "_parent_" + branch
@@ -291,6 +313,7 @@ class DebugTree:
         setattr(self, attribute, cursor)
         return count, mass
 
+    # À la date initiale, seule la racine existe, avec probabilité 1
     def _check_root(self, node: Node) -> None:
         """À la date initiale, seule la racine existe, avec probabilité 1."""
         if node is not self.tree.root:
@@ -298,6 +321,7 @@ class DebugTree:
         if not self._close(node.proba, 1):
             self._error("la probabilité de la racine doit valoir 1", node)
 
+    # Nombre de parents attendu selon le type de transition
     def _check_incoming_count(self, node: Node, previous: TrunkNode, count: int) -> None:
         """Nombre de parents attendu selon le type de transition."""
         kind = self.tree.transition_type(previous.step)
@@ -309,6 +333,7 @@ class DebugTree:
         elif kind == "deterministic" and count != 1:
             self._error(f"{count} branches entrantes dans une transition déterministe", node)
 
+    # La probabilité stockée doit égaler la somme des masses entrantes
     def _check_parents(self, node: Node, previous: TrunkNode | None) -> None:
         """La probabilité stockée doit égaler la somme des masses entrantes."""
         if not np.isfinite(node.proba) or not -1e-12 <= node.proba <= 1 + 1e-12:
@@ -329,6 +354,7 @@ class DebugTree:
                         f"{mass:.12g}", node)
         self._check_incoming_count(node, previous, count)
 
+    # Pas de temps, actualisation, racine et probabilités communes
     def _check_parameters(self) -> None:
         """Pas de temps, actualisation, racine et probabilités communes."""
         tree = self.tree
@@ -365,6 +391,7 @@ class DebugTree:
                 variance += getattr(node, "p_" + branch) * (child.spot_price - mean) ** 2
         return mean, variance
 
+    # Chaque probabilité locale dans [0,1] et leur somme égale à 1
     def _check_probability_sum(self, node: Node) -> None:
         """Chaque probabilité locale dans [0,1] et leur somme égale à 1."""
         probability_sum = 0.0
@@ -376,6 +403,7 @@ class DebugTree:
         if not self._close(probability_sum, 1):
             self._error("la somme des probabilités locales ne vaut pas 1", node)
 
+    # Vérifier la forme d'une coupe puis mesurer son biais de moments
     def _check_pruned_node(self, node: Node, mean: float, variance: float) -> None:
         """Vérifier la forme d'une coupe puis mesurer son biais de moments."""
         self.pruned_node_count += 1
@@ -395,6 +423,7 @@ class DebugTree:
         self.pruning_weighted_variance_bias += node.proba * (variance - node.variance())
         self.pruning_max_abs_mean_bias = max(self.pruning_max_abs_mean_bias, abs(mean_bias))
 
+    # Deux enfants au forward × / ÷ sqrt(alpha), probabilités communes
     def _check_binomial_shape(self, node: Node) -> None:
         """Deux enfants au forward × / ÷ sqrt(alpha), probabilités communes."""
         tree = self.tree
@@ -411,6 +440,7 @@ class DebugTree:
         if not self._close(node.p_up, tree.p_up) or not self._close(node.p_down, tree.p_down):
             self._error("probabilités binomiales différentes des paramètres communs", node)
 
+    # Trois enfants voisins sur la grille, de rapport alpha
     def _check_trinomial_shape(self, node: Node) -> None:
         """Trois enfants voisins sur la grille, de rapport alpha."""
         up, mid, down = node.next_up, node.next_mid, node.next_down
@@ -424,6 +454,7 @@ class DebugTree:
         if not self._close(mid.spot_price / down.spot_price, self.tree.alpha):
             self._error("rapport milieu/bas incorrect sur la grille", node)
 
+    # Volatilité nulle : un seul enfant central, de probabilité 1
     def _check_deterministic_shape(self, node: Node) -> None:
         """Volatilité nulle : un seul enfant central, de probabilité 1."""
         if node.next_up is not None or node.next_down is not None or node.next_mid is None:
@@ -431,6 +462,7 @@ class DebugTree:
         if not self._close(node.p_mid, 1):
             self._error("transition déterministe : probabilité centrale différente de 1", node)
 
+    # Moyenne = forward et variance = variance du modèle (hors pruning)
     def _check_moments(self, node: Node) -> None:
         """Moyenne = forward et variance = variance du modèle (hors pruning)."""
         self._check_probability_sum(node)
@@ -462,6 +494,7 @@ class DebugTree:
         if hasattr(node, "exercise_now") and bool(node.exercise_now) != (intrinsic > 0):
             self._error("décision terminale incompatible avec un payoff positif", node)
 
+    # Recalculer la continuation ; None si un enfant n'est pas valorisé
     def _recomputed_continuation(self, node: Node) -> float | None:
         """Recalculer la continuation ; None si un enfant n'est pas valorisé."""
         continuation = 0.0
@@ -475,6 +508,7 @@ class DebugTree:
             continuation += getattr(node, "p_" + branch) * child.option_value
         return continuation * self.tree.df
 
+    # Contrôler une valorisation déjà calculée ; ne pas imposer price()
     def _check_valuation(self, node: Node) -> None:
         """Contrôler une valorisation déjà calculée ; ne pas imposer price()."""
         if node.option_value is None:
@@ -490,6 +524,7 @@ class DebugTree:
         if continuation is not None:
             self._check_decision(node, intrinsic, continuation)
 
+    # Refaire la décision du moteur avec la même tolérance et comparer
     def _check_decision(self, node: Node, intrinsic: float, continuation: float) -> None:
         """Refaire la décision du moteur avec la même tolérance et comparer."""
         american = self.tree.option.exercise_type.lower() == "american"
@@ -516,6 +551,7 @@ class DebugTree:
             first = self._top(trunk.previous_trunk)
             self._parent_up = self._parent_mid = self._parent_down = first
 
+    # Avant maturité : enfants et moments ; à maturité : aucune branche
     def _check_transitions(self, node: Node, trunk: TrunkNode) -> None:
         """Avant maturité : enfants et moments ; à maturité : aucune branche."""
         if node.step < self.tree.model.nb_steps:
@@ -532,6 +568,7 @@ class DebugTree:
         if self._is_pruned(node):
             self._error("un nœud terminal n'a pas de transition à élaguer", node)
 
+    # Tous les contrôles d'un nœud, dans l'ordre de lecture
     def _check_node(self, node: Node, trunk: TrunkNode) -> None:
         """Tous les contrôles d'un nœud, dans l'ordre de lecture."""
         if node.tree is not self.tree:
@@ -543,6 +580,7 @@ class DebugTree:
         self._check_transitions(node, trunk)
         self._check_valuation(node)
 
+    # Contrôler chaque nœud et la conservation de masse de la colonne
     def _check_column(self, trunk: TrunkNode) -> None:
         """Contrôler chaque nœud et la conservation de masse de la colonne."""
         self._start_cursors(trunk)
@@ -559,6 +597,7 @@ class DebugTree:
                         "au lieu de 1")
         self._previous_has_pruning = current_has_pruning
 
+    # Identité call européen K=0 = forward actualisé, seulement sans pruning
     def _check_zero_strike(self) -> None:
         """Identité call européen K=0 = forward actualisé, seulement sans pruning.
 
@@ -577,6 +616,7 @@ class DebugTree:
             self.tree.option = original
             self.tree.price()
 
+    # Avec pruning : afficher les biais mesurés au lieu du test K=0
     def _report_pruning(self) -> None:
         """Avec pruning : afficher les biais mesurés au lieu du test K=0."""
         tree = self.tree
@@ -590,6 +630,7 @@ class DebugTree:
         print("Information : les moments des nœuds coupés sont altérés ; "
               "test exact K=0 non appliqué.")
 
+    # Afficher le diagnostic et renvoyer le nombre d'erreurs (remis à zéro)
     def check(self) -> int:
         """Afficher le diagnostic et renvoyer le nombre d'erreurs (remis à zéro)."""
         self._reset_counters()
@@ -622,12 +663,14 @@ class DebugTree:
             raise ValueError("Appeler tree.price() avant de colorer les valeurs de l'option.")
         return node.option_value
 
+    # Refuser un critère de couleur inconnu
     @staticmethod
     def validate_color(color_by: str) -> None:
         """Refuser un critère de couleur inconnu."""
         if color_by not in ("spot", "option", "probability"):
             raise ValueError("color_by doit être 'spot', 'option' ou 'probability'.")
 
+    # Échelle de couleur entre la plus petite et la plus grande valeur
     def _color_scale(self, color_by: str) -> Normalize:
         """Échelle de couleur entre la plus petite et la plus grande valeur."""
         minimum, maximum = math.inf, -math.inf
@@ -637,6 +680,7 @@ class DebugTree:
                 minimum, maximum = min(minimum, value), max(maximum, value)
         return Normalize(minimum, maximum if maximum > minimum else minimum + 1)
 
+    # Libellé de la décision du moteur affiché dans la boîte du nœud
     def _decision(self, node: Node) -> str:
         """Libellé de la décision du moteur affiché dans la boîte du nœud."""
         if node.step == self.tree.model.nb_steps:
@@ -645,6 +689,7 @@ class DebugTree:
         action = "EXERCER" if getattr(node, "exercise_now", False) else "CONSERVER"
         return action + (" · PRUNING" if self._is_pruned(node) else "")
 
+    # Valider les options du dessin, compter les nœuds et pricer si besoin
     def _prepare_drawing(self, color_by: str, max_nodes: int, run_checks: bool) -> int:
         """Valider les options du dessin, compter les nœuds et pricer si besoin."""
         self.validate_color(color_by)
@@ -663,6 +708,7 @@ class DebugTree:
             raise ValueError("Dessin interrompu : corriger les erreurs signalées puis relancer.")
         return count
 
+    # Plus petit/grand log(S) et plus petit écart entre deux voisins
     def _log_range(self) -> tuple[float, float, float]:
         """Plus petit/grand log(S) et plus petit écart entre deux voisins."""
         min_log, max_log, min_gap = math.inf, -math.inf, math.inf
@@ -676,6 +722,7 @@ class DebugTree:
             raise ValueError("Le dessin nécessite des spots strictement ordonnés et positifs.")
         return min_log, max_log, min_gap
 
+    # Échelle verticale, largeur, hauteur et log maximal du dessin
     def _canvas_size(self) -> tuple[float, float, float, float]:
         """Échelle verticale, largeur, hauteur et log maximal du dessin."""
         min_log, max_log, min_gap = self._log_range()
@@ -692,6 +739,7 @@ class DebugTree:
                              "réduire l'arbre pour le dessin.")
         return scale_y, width, height, max_log
 
+    # En-tête SVG, styles, titre et légende du dessin
     def _write_header(self, canvas: _SvgCanvas, width: float, height: float,
                       count: int) -> None:
         """En-tête SVG, styles, titre et légende du dessin."""
@@ -715,6 +763,7 @@ class DebugTree:
                     f"{tree.market.dividend_amount:g} € · seuil pruning="
                     f"{tree.model.pruning_threshold:g}", "small", "start")
 
+    # Lignes verticales des dates, taille et masse de chaque colonne
     def _write_columns(self, canvas: _SvgCanvas, height: float) -> None:
         """Lignes verticales des dates, taille et masse de chaque colonne."""
         for trunk in self._columns():
@@ -731,6 +780,7 @@ class DebugTree:
                               'stroke-dasharray="5 5" opacity="0.45"/>\n')
                 canvas.text(px, 205, "FIN DU PAS DIVIDENDE CASH", "decision")
 
+    # Courbe du forward théorique (repère, sans biais de pruning)
     def _write_forward(self, canvas: _SvgCanvas) -> None:
         """Courbe du forward théorique (repère, sans biais de pruning)."""
         previous_x = previous_y = None
@@ -745,6 +795,7 @@ class DebugTree:
                               f'{previous_y:.2f} L {px:.2f} {py:.2f}"/>\n')
             previous_x, previous_y = px, py
 
+    # Une flèche parent → enfant avec sa probabilité conditionnelle
     def _write_edge(self, canvas: _SvgCanvas, node: Node, branch: str) -> None:
         """Une flèche parent → enfant avec sa probabilité conditionnelle."""
         child = getattr(node, "next_" + branch)
@@ -764,6 +815,7 @@ class DebugTree:
         label = "p=1" if self._close(probability, 1) else f"p={probability:.3g}"
         canvas.text((x1 + x2) / 2, (y1 + y2) / 2 - 5, label, "edge-label")
 
+    # Toutes les flèches AVANT les boîtes, qui masquent ainsi les traits
     def _write_edges(self, canvas: _SvgCanvas, show_neighbors: bool) -> None:
         """Toutes les flèches AVANT les boîtes, qui masquent ainsi les traits."""
         for trunk in self._columns():
@@ -776,6 +828,7 @@ class DebugTree:
                                   f'L {canvas.x(node):.2f} {canvas.y(node.below):.2f}" '
                                   'stroke="#64748b" stroke-dasharray="2 4" opacity="0.45"/>\n')
 
+    # Texte affiché au survol : valeurs, décision et moments locaux
     def _node_tooltip(self, node: Node) -> str:
         """Texte affiché au survol : valeurs, décision et moments locaux."""
         detail = (f"Pas {node.step} ; S={node.spot_price:.12g} ; V={node.option_value:.12g} ; "
@@ -793,6 +846,7 @@ class DebugTree:
                        f"variance={variance:.12g} ; Δvar={variance-node.variance():+.6g}")
         return detail
 
+    # Rectangle coloré du nœud (double contour pour le tronc)
     def _write_box(self, canvas: _SvgCanvas, node: Node, fill: str, text_color: str) -> None:
         """Rectangle coloré du nœud (double contour pour le tronc)."""
         px, py = canvas.x(node), canvas.y(node)
@@ -809,6 +863,7 @@ class DebugTree:
                           f'width="{_BOX_WIDTH-8}" height="{_BOX_HEIGHT-8}" rx="6" '
                           f'fill="none" stroke="{text_color}" stroke-opacity="0.65"/>\n')
 
+    # Boîte du nœud : couleur, contour, infobulle et quatre lignes de texte
     def _write_node(self, canvas: _SvgCanvas, node: Node, norm: Normalize,
                     color_by: str) -> None:
         """Boîte du nœud : couleur, contour, infobulle et quatre lignes de texte."""
@@ -833,6 +888,7 @@ class DebugTree:
                           f'{escape(label)}</text>\n')
         canvas.write('</g></g>\n')
 
+    # Écrire tout le document SVG dans un flux texte ouvert
     def _write_svg(self, stream: TextIO, color_by: str, show_neighbors: bool,
                    count: int) -> None:
         """Écrire tout le document SVG dans un flux texte ouvert."""
@@ -853,6 +909,7 @@ class DebugTree:
                     "détails ; survoler un nœud pour ses moments.", "small", "start")
         canvas.write('</svg>\n')
 
+    # Écrire un SVG autonome, vectoriel et zoomable, et renvoyer son chemin
     def export_svg(self, path: str | Path, color_by: str = "option",
                    show_neighbors: bool = False, max_nodes: int = DEFAULT_MAX_DRAW_NODES,
                    run_checks: bool = True) -> Path:
@@ -875,6 +932,7 @@ class DebugTree:
         return destination
 
 
+# Exemple reproductible : contrôle puis export SVG d'un petit arbre
 def main() -> None:
     """Exemple reproductible : contrôle puis export SVG d'un petit arbre."""
     parser = argparse.ArgumentParser(description=__doc__)

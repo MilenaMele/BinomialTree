@@ -15,14 +15,16 @@ respecter les règles ci-dessous, sinon la note baisse
      `*` comme un paramètre non typé.
    - Pas de fonction imbriquée (`def` dans un `def`) : utiliser une fonction de
      module privée et `functools.partial`. Éviter les `lambda`.
-3. **Commentaires réguliers** : jamais plus de **20 lignes non vides** sans
-   commentaire `#` ou docstring (l'outil tolère 25 ; on garde une marge).
+3. **Commentaires réguliers** : jamais plus de **20 lignes** d'affilée sans un
+   commentaire `#` (limite du prof : 25). Toutes les lignes comptent, y compris
+   les lignes vides et les docstrings, qui ne remplacent PAS un commentaire `#`.
+   Chaque fonction/classe est précédée d'un commentaire `#` qui la résume.
 4. **Méthodes privées** : chaque classe a au moins une méthode privée
    (`_nom`). Les fonctions utilisées seulement dans leur fichier sont privées
    (`_nom`) ; seules celles appelées depuis un autre module restent publiques.
 5. **Lignes courtes** : au plus **99 caractères** par ligne.
-6. **Docstring de module** : chaque `.py` commence par une explication
-   « À quoi sert ce module ? ».
+6. **En-tête de module** : chaque `.py` commence par un bloc de commentaires `#`
+   expliquant à quoi sert le module, suivi d'une docstring d'une ligne.
 
 Commentaires et docstrings sont rédigés en français.
 

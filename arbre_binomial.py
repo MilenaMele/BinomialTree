@@ -1,22 +1,25 @@
-"""Moteur de pricing : arbre recombiné à liens directs (cœur du projet).
+# =============================================================================
+# Moteur de pricing : arbre recombiné à liens directs (cœur du projet).
+#
+# À quoi sert ce module ?
+#     Il construit l'arbre du sous-jacent (binomial, avec un pas trinomial
+#     au détachement d'un dividende cash), puis valorise une option
+#     call/put européenne ou américaine en remontant l'arbre. Il calcule
+#     aussi les profils par date du cours (pages 22-23) : valeur moyenne
+#     actualisée et probabilités d'exercice.
+#
+# Ce fichier est du Python « pur » : il ne connaît pas Streamlit. On peut
+# le lancer seul dans VS Code (``python arbre_binomial.py``) pour obtenir un
+# prix dans le terminal. L'interface (app.py) ne fait que l'appeler.
+#
+# Le maillage conserve ses liens ``above/below`` et ``next_up/mid/down`` :
+# aucun conteneur de nœuds n'est nécessaire pour construire ou parcourir
+# l'arbre (cours p. 18). Les collections de résultats ne contiennent que des
+# nombres et des dates.
+# =============================================================================
+"""Moteur de pricing : arbre recombiné à liens directs (cœur du projet)."""
 
-À quoi sert ce module ?
-    Il construit l'arbre du sous-jacent (binomial, avec un pas trinomial
-    au détachement d'un dividende cash), puis valorise une option
-    call/put européenne ou américaine en remontant l'arbre. Il calcule
-    aussi les profils par date du cours (pages 22-23) : valeur moyenne
-    actualisée et probabilités d'exercice.
-
-Ce fichier est du Python « pur » : il ne connaît pas Streamlit. On peut
-le lancer seul dans VS Code (``python arbre_binomial.py``) pour obtenir un
-prix dans le terminal. L'interface (app.py) ne fait que l'appeler.
-
-Le maillage conserve ses liens ``above/below`` et ``next_up/mid/down`` :
-aucun conteneur de nœuds n'est nécessaire pour construire ou parcourir
-l'arbre (cours p. 18). Les collections de résultats ne contiennent que des
-nombres et des dates.
-"""
-
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
 
 import datetime as dt
@@ -77,6 +80,7 @@ class Model:
         # ce seuil n'a plus qu'un seul enfant (0 = pas de pruning).
         self.pruning_threshold = pruning_threshold
 
+    # Refuser une date avec heure, un N non entier ou un seuil hors [0, 1]
     @staticmethod
     def _validate(pricing_date: dt.date, nb_steps: int, threshold: float) -> None:
         """Refuser une date avec heure, un N non entier ou un seuil hors [0, 1]."""
@@ -105,6 +109,7 @@ class Option:
         self.type = type
         self.exercise_type = exercise_type
 
+    # Vérifier strike, date et libellés avant toute construction
     @staticmethod
     def _validate(strike: float, maturity: dt.date, kind: str, exercise: str) -> None:
         """Vérifier strike, date et libellés avant toute construction."""
@@ -118,6 +123,7 @@ class Option:
         if exercise.lower() not in ("european", "american"):
             raise ValueError("Exercise type must be 'European' or 'American'")
 
+    # Valeur d'exercice immédiat (payoff) pour un prix du sous-jacent
     def intrinsic_value(self, spot_price: float) -> float:
         """Valeur d'exercice immédiat (payoff) pour un prix du sous-jacent."""
         if self.type.lower() == "call":
@@ -147,6 +153,7 @@ class Market:
         self.dividend_amount = dividend_amount
         self.ex_dividend_date = ex_dividend_date
 
+    # Refuser les valeurs non finies, négatives ou un cash sans date
     @staticmethod
     def _validate(spot: float, rate: float, vol: float, q: float, cash: float,
                   ex_date: dt.date | None) -> None:
@@ -198,14 +205,17 @@ class Node:
         # Probabilité d'atteindre ce nœud depuis la racine (sert au pruning).
         self.proba = 0.0
 
+    # Espérance conditionnelle sur le prochain pas, dividendes inclus
     def forward(self) -> float:
         """Espérance conditionnelle sur le prochain pas, dividendes inclus."""
         return self.tree.expected_spot(self.spot_price, self.step)
 
+    # Variance conditionnelle du prochain pas (approximation du cours)
     def variance(self) -> float:
         """Variance conditionnelle du prochain pas (approximation du cours)."""
         return self.tree.conditional_variance(self.spot_price, self.step)
 
+    # Somme p_branche × V_enfant sur les branches existantes
     def _expected_child_value(self) -> float:
         """Somme p_branche × V_enfant sur les branches existantes."""
         expectation = 0.0
@@ -216,6 +226,7 @@ class Node:
                 expectation += getattr(self, "p_" + branch) * child.option_value
         return expectation
 
+    # Rétropropager puis enregistrer la décision de gestion optimale
     def compute_option_value(self) -> None:
         """Rétropropager puis enregistrer la décision de gestion optimale.
 
@@ -256,6 +267,7 @@ class TrunkNode(Node):
         self.next_trunk: TrunkNode | None = None
         self.column_size = 1
 
+    # Vrai pour la racine (pas de colonne précédente)
     def _is_root(self) -> bool:
         """Vrai pour la racine (pas de colonne précédente)."""
         return self.previous_trunk is None
@@ -289,6 +301,7 @@ class Tree:
         self.last_trunk = self.root
         self._built = False
 
+    # Affecter l'unique dividende cash à l'intervalle (t_i, t_{i+1}]
     def _locate_dividend(self) -> None:
         """Affecter l'unique dividende cash à l'intervalle (t_i, t_{i+1}]."""
         self.dividend_step: int | None = None
@@ -305,6 +318,7 @@ class Tree:
         # Temps (en années) entre le détachement et la fin du pas.
         self.remaining_after_dividend = (self.dividend_step * days - ex_days * n) / (365.0 * n)
 
+    # Pas de temps, actualisation, croissance et probabilités binomiales
     def _set_step_parameters(self) -> None:
         """Pas de temps, actualisation, croissance et probabilités binomiales."""
         maturity_years = self.duration_days / 365.0
@@ -323,6 +337,7 @@ class Tree:
         self.p_up = 1 / (1 + self.sqrtAlpha)
         self.p_down = self.sqrtAlpha / (1 + self.sqrtAlpha)
 
+    # Facteur binomial >1 obtenu en égalant moyenne et variance (p7–8)
     def _compute_sqrt_alpha(self) -> float:
         """Facteur binomial >1 obtenu en égalant moyenne et variance (p7–8).
 
@@ -347,6 +362,7 @@ class Tree:
         # Le pas qui contient le détachement cash est trinomial.
         return "trinomial" if step + 1 == self.dividend_step else "binomial"
 
+    # Forward d'un pas, diminué du cash capitalisé s'il est détaché
     def expected_spot(self, spot: float, step: int) -> float:
         """Forward d'un pas, diminué du cash capitalisé s'il est détaché."""
         mean = spot * self.growth
@@ -355,6 +371,7 @@ class Tree:
                 self.drift * self.remaining_after_dividend)
         return float(mean)
 
+    # Variance d'un pas ; approximation intra-pas au détachement cash
     def conditional_variance(self, spot: float, step: int) -> float:
         """Variance d'un pas ; approximation intra-pas au détachement cash."""
         base = spot
@@ -374,6 +391,7 @@ class Tree:
             yield trunk
             trunk = trunk.next_trunk
 
+    # Monter en haut d'une colonne par above, puis redescendre par below
     def iter_column(self, trunk: TrunkNode) -> Iterator[Node]:
         """Monter en haut d'une colonne par above, puis redescendre par below."""
         node: Node = trunk
@@ -383,10 +401,12 @@ class Tree:
             yield node
             node = node.below
 
+    # Nombre total de nœuds de l'arbre (pour mesurer l'effet du pruning)
     def count_nodes(self) -> int:
         """Nombre total de nœuds de l'arbre (pour mesurer l'effet du pruning)."""
         return sum(trunk.column_size for trunk in self.iter_columns())
 
+    # Appliquer une fonction au tronc, puis au-dessus, puis en dessous
     def _apply_to_column(self, trunk: TrunkNode, function: Callable[[Node], None]) -> None:
         """Appliquer une fonction au tronc, puis au-dessus, puis en dessous."""
         function(trunk)
@@ -416,16 +436,19 @@ class Tree:
             )
         return mean
 
+    # Créer un nœud ordinaire (hors tronc)
     def _create_node(self, spot_price: float, step: int) -> Node:
         """Créer un nœud ordinaire (hors tronc)."""
         return Node(tree=self, spot_price=spot_price, step=step)
 
+    # Connecter deux voisins de la même colonne
     @staticmethod
     def _connect_vertical(upper_node: Node, lower_node: Node) -> None:
         """Connecter deux voisins de la même colonne."""
         upper_node.below = lower_node
         lower_node.above = upper_node
 
+    # Voisin du dessus, créé si besoin (on étend la chaîne, pas un tableau)
     def _upper_neighbor(self, node: Node, trunk: TrunkNode) -> Node:
         """Voisin du dessus, créé si besoin (on étend la chaîne, pas un tableau)."""
         if node.above is None:
@@ -434,6 +457,7 @@ class Tree:
             trunk.column_size += 1
         return node.above
 
+    # Voisin du dessous, créé si besoin
     def _lower_neighbor(self, node: Node, trunk: TrunkNode) -> Node:
         """Voisin du dessous, créé si besoin."""
         if node.below is None:
@@ -461,6 +485,7 @@ class Tree:
             candidate = lower
         return candidate
 
+    # Résoudre les 3 moments centrés (plus stable que E²+V puis soustraction)
     def _trinomial_probabilities(self, node: Node, middle: Node) -> tuple[float, float, float]:
         """Résoudre les 3 moments centrés (plus stable que E²+V puis soustraction)."""
         mean = self._positive_mean(node)
@@ -472,6 +497,7 @@ class Tree:
         p_down = (second - e * u) / (d * (d - u))
         return p_up, 1.0 - p_up - p_down, p_down
 
+    # Refuser des probabilités négatives plutôt que de les forcer
     @staticmethod
     def _check_trinomial(node: Node, probabilities: tuple[float, float, float]) -> None:
         """Refuser des probabilités négatives plutôt que de les forcer."""
@@ -487,6 +513,7 @@ class Tree:
             "sans forcer les probabilités."
         )
 
+    # Relier un parent à trois enfants voisins et fixer leurs probabilités
     def _connect_trinomial(self, node: Node, middle: Node, trunk: TrunkNode) -> None:
         """Relier un parent à trois enfants voisins et fixer leurs probabilités."""
         node.next_mid = middle
@@ -504,6 +531,7 @@ class Tree:
         node.p_mid /= total
         node.p_down /= total
 
+    # Pas cash : tronc au forward puis trois enfants voisins par parent
     def _build_dividend_column(self, trunk: TrunkNode, step: int) -> TrunkNode:
         """Pas cash : tronc au forward puis trois enfants voisins par parent.
 
@@ -539,6 +567,7 @@ class Tree:
         self._connect_vertical(next_trunk, lower_node)
         return next_trunk
 
+    # Créer les deux enfants du tronc lorsque le tronc descend
     def _build_trunk_down(self, trunk: TrunkNode, step: int) -> TrunkNode:
         """Créer les deux enfants du tronc lorsque le tronc descend."""
         fwd = trunk.forward()
@@ -549,10 +578,12 @@ class Tree:
         self._connect_vertical(upper_node, next_trunk)
         return next_trunk
 
+    # Pruning : seul un nœud du bord peut être coupé, s'il est trop improbable
     def _should_prune(self, node: Node, is_edge: bool) -> bool:
         """Pruning : seul un nœud du bord peut être coupé, s'il est trop improbable."""
         return is_edge and node.proba < self.model.pruning_threshold
 
+    # Un nœud coupé va vers un seul enfant (déjà existant), avec probabilité 1
     @staticmethod
     def _connect_monomial(node: Node, child: Node) -> None:
         """Un nœud coupé va vers un seul enfant (déjà existant), avec probabilité 1."""
@@ -562,6 +593,7 @@ class Tree:
         node.next_mid = child
         node.p_up, node.p_mid, node.p_down = 0.0, 1.0, 0.0
 
+    # Construire au-dessus du tronc ; renvoie 1 si le bord haut est coupé
     def _build_above(self, trunk: TrunkNode, step: int) -> int:
         """Construire au-dessus du tronc ; renvoie 1 si le bord haut est coupé."""
         current = trunk.above
@@ -579,6 +611,7 @@ class Tree:
             current = current.above
         return 0
 
+    # Construire sous le tronc ; renvoie 1 si le bord bas est coupé
     def _build_below(self, trunk: TrunkNode, step: int) -> int:
         """Construire sous le tronc ; renvoie 1 si le bord bas est coupé."""
         current = trunk.below
@@ -595,6 +628,7 @@ class Tree:
             current = current.below
         return 0
 
+    # Ajouter proba(parent) × p(branche) à chaque enfant existant
     @staticmethod
     def _push_probability(node: Node) -> None:
         """Ajouter proba(parent) × p(branche) à chaque enfant existant."""
@@ -606,6 +640,7 @@ class Tree:
         if node.next_down is not None:
             node.next_down.proba += node.p_down * node.proba
 
+    # Transmettre la probabilité de chaque nœud de la colonne à ses enfants
     def _propagate_probabilities(self, trunk: TrunkNode) -> None:
         """Transmettre la probabilité de chaque nœud de la colonne à ses enfants.
 
@@ -615,6 +650,7 @@ class Tree:
         """
         self._apply_to_column(trunk, self._push_probability)
 
+    # Volatilité nulle : un seul enfant, au forward, avec probabilité 1
     def _build_deterministic(self, trunk: TrunkNode, step: int) -> TrunkNode:
         """Volatilité nulle : un seul enfant, au forward, avec probabilité 1."""
         next_trunk = TrunkNode(self, self._positive_mean(trunk), step)
@@ -622,6 +658,7 @@ class Tree:
         trunk.p_up, trunk.p_mid, trunk.p_down = 0.0, 1.0, 0.0
         return next_trunk
 
+    # Construire une date puis la relier aux deux dates voisines
     def _build_next_column(self, trunk: TrunkNode, step: int) -> TrunkNode:
         """Construire une date puis la relier aux deux dates voisines.
 
@@ -650,6 +687,7 @@ class Tree:
         self._propagate_probabilities(trunk)
         return next_trunk
 
+    # Avancer de la racine à la dernière colonne (idempotent)
     def build(self) -> Tree:
         """Avancer de la racine à la dernière colonne (idempotent)."""
         if self._built:
@@ -664,6 +702,7 @@ class Tree:
         self._built = True
         return self
 
+    # Afficher chaque colonne dans le terminal (petits arbres seulement)
     def print_tree(self) -> None:
         """Afficher chaque colonne dans le terminal (petits arbres seulement)."""
         for trunk in self.iter_columns():
@@ -683,6 +722,7 @@ class Tree:
         """Tolérance absolue + relative, exprimée dans l'unité du payoff."""
         return 1e-12 * max(1.0, abs(payoff), abs(continuation))
 
+    # À maturité : valeur = payoff ; exercice si payoff strictement positif
     def _set_terminal_values(self) -> None:
         """À maturité : valeur = payoff ; exercice si payoff strictement positif."""
         for node in self.iter_column(self.last_trunk):
@@ -692,6 +732,7 @@ class Tree:
             # Une option à la monnaie ou hors monnaie expire sans exercice.
             node.exercise_now = payoff > 0.0
 
+    # Recalculer toutes les valeurs et décisions pour l'option actuelle
     def price(self) -> float:
         """Recalculer toutes les valeurs et décisions pour l'option actuelle.
 
@@ -710,6 +751,7 @@ class Tree:
             trunk = trunk.previous_trunk
         return float(self.root.option_value)
 
+    # Espérance théorique de S(t), dividende cash déjà détaché inclus
     def mean_at_time(self, time_years: float) -> float:
         """Espérance théorique de S(t), dividende cash déjà détaché inclus.
 
@@ -727,12 +769,14 @@ class Tree:
                 mean -= self.market.dividend_amount * np.exp(self.drift * (time_years - ex_time))
         return float(mean)
 
+    # Call européen K=0 théorique = forward final actualisé (cours p21)
     def expected_zero_strike(self) -> float:
         """Call européen K=0 théorique = forward final actualisé (cours p21)."""
         maturity_years = self.duration_days / 365.0
         return float(np.exp(-self.market.rate * maturity_years)
                      * self.mean_at_time(maturity_years))
 
+    # Remettre à zéro les masses vivantes ; la racine repart à 1
     def _reset_alive_masses(self) -> None:
         """Remettre à zéro les masses vivantes ; la racine repart à 1."""
         for trunk in self.iter_columns():
@@ -740,6 +784,7 @@ class Tree:
                 node.alive_proba = 0.0
         self.root.alive_proba = 1.0
 
+    # Sommer les masses d'une colonne et propager les masses vivantes
     def _scan_column(self, trunk: TrunkNode) -> tuple[float, float, float, float, float, float]:
         """Sommer les masses d'une colonne et propager les masses vivantes.
 
@@ -765,6 +810,7 @@ class Tree:
                     child.alive_proba += node.alive_proba * getattr(node, "p_" + branch)
         return mean_value, region, first, alive_value, cashflow, survival
 
+    # Calculer les profils de valeur et d'exercice du cours, pages 22–23
     def exercise_profile(self) -> tuple[ExerciseProfileRow, ...]:
         """Calculer les profils de valeur et d'exercice du cours, pages 22–23.
 
@@ -828,6 +874,7 @@ def _print_report(tree: Tree, price: float, elapsed: float) -> None:
     print(f"Temps de calcul : {elapsed:.2f} s")
 
 
+# Pricer un put européen avec dividende cash et afficher le résultat
 def main() -> None:
     """Pricer un put européen avec dividende cash et afficher le résultat."""
     # pruning_threshold = 0 : pas de pruning ; 1e-7 : on coupe les nœuds de proba < 1e-7

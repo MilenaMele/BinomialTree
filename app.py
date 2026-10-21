@@ -1,14 +1,17 @@
-"""Interface Streamlit du pricer (seul fichier qui utilise Streamlit).
+# =============================================================================
+# Interface Streamlit du pricer (seul fichier qui utilise Streamlit).
+#
+# Il affiche l'application web : formulaire des paramètres dans la barre
+# latérale, puis sept pages (prix, valeur & exercice, arbre, convergence,
+# pruning, dividendes & taux, guide). Il ne calcule rien lui-même : il
+# appelle ``interface_calculs`` (qui appelle le moteur ``arbre_binomial``)
+# et dessine les tableaux renvoyés avec Plotly.
+#
+# Lancer avec : python -m streamlit run app.py
+# =============================================================================
+"""Interface Streamlit du pricer (seul fichier qui utilise Streamlit)."""
 
-Il affiche l'application web : formulaire des paramètres dans la barre
-latérale, puis sept pages (prix, valeur & exercice, arbre, convergence,
-pruning, dividendes & taux, guide). 
-appelle ``interface_calculs`` (qui appelle le moteur ``arbre_binomial``)
-et dessine les tableaux renvoyés avec Plotly.
-
-Lancer avec : python -m streamlit run app.py
-"""
-
+# Imports : bibliothèque standard, paquets externes puis modules du projet.
 from __future__ import annotations
 
 import datetime as dt
@@ -24,18 +27,18 @@ from typing import Callable
 # Définir le backend AVANT d'importer les modules de calcul qui utilisent pyplot.
 os.environ.setdefault("MPLBACKEND", "Agg")
 
-import numpy as np  
-import pandas as pd  
-import plotly.graph_objects as go  
-import streamlit as st 
-import streamlit.components.v1 as components  
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+import streamlit.components.v1 as components
 
-from interface_calculs import ( 
+from interface_calculs import (
     EXERCISE_SCENARIOS, Parameters, calculate_summary, check_tree, convergence_study,
     debug_tree, dividend_study, exercise_comparison, has_active_cash, pruning_study,
     rate_study, strike_study,
 )
-from interface_exports import profile_archive, scenario_json  
+from interface_exports import profile_archive, scenario_json
 
 # Pages de la navigation, palette des graphiques et bornes des dates.
 PAGES = (
@@ -73,6 +76,7 @@ def _preset(name: str) -> Parameters:
     return base
 
 
+# Mettre des valeurs dans les widgets AVANT leur création au rerun
 def _populate_form(params: Parameters) -> None:
     """Mettre des valeurs dans les widgets AVANT leur création au rerun."""
     for name in ("spot", "strike", "nb_steps", "pruning_threshold", "pricing_date",
@@ -89,11 +93,13 @@ def _populate_form(params: Parameters) -> None:
         "Américaine" if params.exercise_type == "American" else "Européenne")
 
 
+# Rappel du menu « Exemple de départ » : recharger tout le formulaire
 def _change_preset() -> None:
     """Rappel du menu « Exemple de départ » : recharger tout le formulaire."""
     _populate_form(_preset(st.session_state["preset_name"]))
 
 
+# Champs du marché : spot, taux, volatilité, rendement continu
 def _market_inputs() -> None:
     """Champs du marché : spot, taux, volatilité, rendement continu."""
     with st.expander("Marché", expanded=True):
@@ -107,6 +113,7 @@ def _market_inputs() -> None:
                         key="param_dividend_yield", step=0.5, format="%.2f")
 
 
+# Champs du contrat : type, exercice, strike et dates
 def _option_inputs() -> None:
     """Champs du contrat : type, exercice, strike et dates."""
     with st.expander("Option & dates", expanded=True):
@@ -120,6 +127,7 @@ def _option_inputs() -> None:
                       max_value=DATE_MAX, format="DD/MM/YYYY")
 
 
+# Champs du dividende cash puis du maillage (N et pruning)
 def _cash_and_grid_inputs() -> None:
     """Champs du dividende cash puis du maillage (N et pruning)."""
     with st.expander("Dividende cash", expanded=False):
@@ -139,6 +147,7 @@ def _cash_and_grid_inputs() -> None:
         st.caption("Les grands N demandent plus de temps et de mémoire.")
 
 
+# Lire les widgets et convertir les pourcentages en décimaux
 def _form_candidate() -> Parameters:
     """Lire les widgets et convertir les pourcentages en décimaux."""
     state = st.session_state
@@ -159,6 +168,7 @@ def _form_candidate() -> Parameters:
     )
 
 
+# Valider le scénario saisi ; ne remplacer l'actif que s'il est valide
 def _apply_form() -> None:
     """Valider le scénario saisi ; ne remplacer l'actif que s'il est valide."""
     candidate = _form_candidate()
@@ -170,6 +180,7 @@ def _apply_form() -> None:
         st.error(str(exc))
 
 
+# Un formulaire évite de reconstruire l'arbre à chaque chiffre tapé
 def _sidebar() -> tuple[Parameters, str]:
     """Un formulaire évite de reconstruire l'arbre à chaque chiffre tapé."""
     if "active_parameters" not in st.session_state:
@@ -197,6 +208,7 @@ def _sidebar() -> tuple[Parameters, str]:
     return active, page
 
 
+# Export JSON du scénario actif et lien vers le code
 def _sidebar_footer(active: Parameters) -> None:
     """Export JSON du scénario actif et lien vers le code."""
     st.download_button("Exporter les paramètres JSON", scenario_json(active),
@@ -213,12 +225,14 @@ def _cached_summary(params: Parameters) -> dict:
     return calculate_summary(params)
 
 
+# Mémoriser le ZIP des profils (octets seulement)
 @st.cache_data(max_entries=3, ttl=1800, show_spinner=False)
 def _cached_archive(params: Parameters) -> bytes:
     """Mémoriser le ZIP des profils (octets seulement)."""
     return profile_archive(params)
 
 
+# Même présentation et export vectoriel pour tous les graphiques
 def _plot(fig: go.Figure, key: str) -> None:
     """Même présentation et export vectoriel pour tous les graphiques."""
     fig.update_layout(
@@ -233,6 +247,7 @@ def _plot(fig: go.Figure, key: str) -> None:
                     config={"displaylogo": False, "toImageButtonOptions": {"format": "svg"}})
 
 
+# Une courbe par colonne de ``series`` ({colonne: légende})
 def _line_figure(frame: pd.DataFrame, x: str, series: dict[str, str], xlabel: str,
                  ylabel: str, probability: bool = False) -> go.Figure:
     """Une courbe par colonne de ``series`` ({colonne: légende})."""
@@ -247,6 +262,7 @@ def _line_figure(frame: pd.DataFrame, x: str, series: dict[str, str], xlabel: st
     return fig
 
 
+# Bouton de téléchargement CSV d'un tableau
 def _csv_download(frame: pd.DataFrame, filename: str, key: str) -> None:
     """Bouton de téléchargement CSV d'un tableau."""
     # UTF-8 avec BOM facilite l'ouverture des accents dans Excel sous Windows.
@@ -255,12 +271,14 @@ def _csv_download(frame: pd.DataFrame, filename: str, key: str) -> None:
                        filename, "text/csv", key=key)
 
 
+# Message d'erreur lisible au lieu d'une trace Python
 def _show_errors(exc: Exception) -> None:
     """Message d'erreur lisible au lieu d'une trace Python."""
     st.error("Ce calcul n’a pas pu être effectué avec les paramètres choisis.")
     st.info(str(exc))
 
 
+# Ne montrer que les résultats correspondant aux réglages affichés
 def _study_result(key: str, signature: tuple, compute: Callable[[], object],
                   label: str) -> object | None:
     """Ne montrer que les résultats correspondant aux réglages affichés.
@@ -286,6 +304,7 @@ def _study_result(key: str, signature: tuple, compute: Callable[[], object],
     return None
 
 
+# Conserver les échecs dans le CSV et les rendre visibles, sans prix fictif
 def _valid_rows(frame: pd.DataFrame) -> pd.DataFrame:
     """Conserver les échecs dans le CSV et les rendre visibles, sans prix fictif."""
     if "status" not in frame:
@@ -298,6 +317,7 @@ def _valid_rows(frame: pd.DataFrame) -> pd.DataFrame:
     return frame[frame["status"] == "ok"]
 
 
+# Lire une liste de nombres séparés par virgules, points-virgules ou espaces
 def _number_list(text: str, integers: bool = False, maximum: int = 20) -> list:
     """Lire une liste de nombres séparés par virgules, points-virgules ou espaces."""
     tokens = [token for token in re.split(r"[,;\s]+", text.strip()) if token]
@@ -314,6 +334,7 @@ def _number_list(text: str, integers: bool = False, maximum: int = 20) -> list:
     return list(dict.fromkeys(values))
 
 
+# Synthèse du scénario (en cache) ou None si le calcul échoue
 def _summary(params: Parameters) -> dict | None:
     """Synthèse du scénario (en cache) ou None si le calcul échoue."""
     try:
@@ -342,6 +363,7 @@ def _price_metrics(result: dict, params: Parameters) -> None:
                "Le temps inclut la construction, les quatre valorisations et le profil.")
 
 
+# Barres des quatre prix ; le contrat choisi est mis en couleur
 def _price_chart(table: pd.DataFrame, params: Parameters) -> None:
     """Barres des quatre prix ; le contrat choisi est mis en couleur."""
     colors = [COLORS[0] if row.option_type == params.option_type
@@ -354,6 +376,7 @@ def _price_chart(table: pd.DataFrame, params: Parameters) -> None:
     _plot(fig, "comparison_chart")
 
 
+# Prix du contrat, comparaison des quatre contrats et Black-Scholes
 def _price_page(params: Parameters) -> None:
     """Prix du contrat, comparaison des quatre contrats et Black-Scholes."""
     st.subheader("Un scénario, quatre contrats")
@@ -404,6 +427,7 @@ def _value_tab(frame: pd.DataFrame, result: dict) -> None:
                f"Écart maximal de masse : {result['mass_error']:.3g}.")
 
 
+# Masse des nœuds en zone d'exercice, date par date
 def _region_chart(early: pd.DataFrame, terminal: pd.Series) -> None:
     """Masse des nœuds en zone d'exercice, date par date."""
     fig = _line_figure(early, "time_years", {
@@ -419,6 +443,7 @@ def _region_chart(early: pd.DataFrame, terminal: pd.Series) -> None:
                "un chemin peut contribuer à plusieurs dates.")
 
 
+# Distribution du premier exercice (chaque contrat compté une fois)
 def _first_exercise_chart(early: pd.DataFrame, terminal: pd.Series) -> None:
     """Distribution du premier exercice (chaque contrat compté une fois)."""
     fig = go.Figure(go.Bar(x=early.time_years, y=early.first_exercise_probability,
@@ -432,6 +457,7 @@ def _first_exercise_chart(early: pd.DataFrame, terminal: pd.Series) -> None:
     _plot(fig, "first_exercise_chart")
 
 
+# Exercice cumulé, survie avant T et expiration sans paiement à T
 def _cumulative_chart(frame: pd.DataFrame, early: pd.DataFrame,
                       terminal: pd.Series) -> None:
     """Exercice cumulé, survie avant T et expiration sans paiement à T."""
@@ -447,6 +473,7 @@ def _cumulative_chart(frame: pd.DataFrame, early: pd.DataFrame,
     _plot(fig, "cumulative_chart")
 
 
+# Trois vues de l'exercice : zone, premier exercice et cumul
 def _exercise_tab(frame: pd.DataFrame) -> None:
     """Trois vues de l'exercice : zone, premier exercice et cumul."""
     st.write("La zone d’exercice décrit l’arbre entier. Pour compter chaque contrat "
@@ -458,6 +485,7 @@ def _exercise_tab(frame: pd.DataFrame) -> None:
     _cumulative_chart(frame, early, terminal)
 
 
+# Une courbe par contrat comparé, en fonction de la date de l'arbre
 def _scenario_figure(frame: pd.DataFrame, column: str, ylabel: str,
                      probability: bool) -> go.Figure:
     """Une courbe par contrat comparé, en fonction de la date de l'arbre."""
@@ -470,6 +498,7 @@ def _scenario_figure(frame: pd.DataFrame, column: str, ylabel: str,
     return fig
 
 
+# Graphique du cours p. 23 : probabilité d'exercice par date et par contrat
 def _comparison_tab(params: Parameters) -> None:
     """Graphique du cours p. 23 : probabilité d'exercice par date et par contrat."""
     st.write(f"Pour chaque date, somme des probabilités des nœuds où le {params.option_type} "
@@ -496,6 +525,7 @@ def _comparison_tab(params: Parameters) -> None:
     _csv_download(result, "comparaison_exercice.csv", "comparison_exercise_csv")
 
 
+# Tableau complet du profil, CSV et ZIP des graphiques
 def _data_tab(frame: pd.DataFrame, params: Parameters) -> None:
     """Tableau complet du profil, CSV et ZIP des graphiques."""
     st.dataframe(frame, hide_index=True, width="stretch")
@@ -507,6 +537,7 @@ def _data_tab(frame: pd.DataFrame, params: Parameters) -> None:
                            "profils_option.zip", "application/zip")
 
 
+# Valeur moyenne, probabilités d'exercice et comparaison des contrats
 def _profile_page(params: Parameters) -> None:
     """Valeur moyenne, probabilités d'exercice et comparaison des contrats."""
     st.subheader("Valeur et exercice, date par date")
@@ -559,6 +590,7 @@ def _svg_view(svg: str, zoom: float) -> None:
         components.html(html, height=710, scrolling=False)
 
 
+# Réglages propres au dessin : pas, seuil, couleur et options
 def _debug_controls() -> tuple[int, float, str, bool, bool]:
     """Réglages propres au dessin : pas, seuil, couleur et options."""
     a, b, c = st.columns(3)
@@ -573,6 +605,7 @@ def _debug_controls() -> tuple[int, float, str, bool, bool]:
     return steps, threshold, color, neighbors, compare
 
 
+# Dessin demandé et, si besoin, le même arbre sans pruning
 def _debug_trees(params: Parameters, steps: int, color: str, neighbors: bool,
                  compare: bool) -> dict:
     """Dessin demandé et, si besoin, le même arbre sans pruning."""
@@ -583,6 +616,7 @@ def _debug_trees(params: Parameters, steps: int, color: str, neighbors: bool,
     return results
 
 
+# Indicateurs, dessin SVG et rapport d'un arbre contrôlé
 def _show_diagnostic(name: str, diagnostic: dict, zoom: float) -> None:
     """Indicateurs, dessin SVG et rapport d'un arbre contrôlé."""
     cols = st.columns(3)
@@ -602,6 +636,7 @@ def _show_diagnostic(name: str, diagnostic: dict, zoom: float) -> None:
         st.code(diagnostic["report"], language="text")
 
 
+# Contrôler le scénario principal sans dessiner tous ses nœuds
 def _main_check(params: Parameters) -> None:
     """Contrôler le scénario principal sans dessiner tous ses nœuds."""
     st.write(f"Contrôler aussi le scénario principal à N = {params.nb_steps}, "
@@ -617,6 +652,7 @@ def _main_check(params: Parameters) -> None:
     st.code(check["report"], language="text")
 
 
+# Dessin SVG d'un petit arbre et contrôles numériques
 def _debug_page(params: Parameters) -> None:
     """Dessin SVG d'un petit arbre et contrôles numériques."""
     st.subheader("Inspecter la construction de l’arbre")
@@ -657,11 +693,13 @@ def _reference_params(params: Parameters) -> Parameters | None:
     return replace(params, dividend_amount=0.0, ex_dividend_date=None)
 
 
+# Lire la liste des N puis lancer l'étude de convergence
 def _convergence_steps(reference: Parameters, text: str) -> pd.DataFrame:
     """Lire la liste des N puis lancer l'étude de convergence."""
     return convergence_study(reference, _number_list(text, True))
 
 
+# Temps observé en log-log, comparé à une pente N²
 def _convergence_time_chart(good: pd.DataFrame) -> None:
     """Temps observé en log-log, comparé à une pente N²."""
     fig = _line_figure(good, "nb_steps", {"seconds": "Temps observé"}, "N", "Secondes")
@@ -674,6 +712,7 @@ def _convergence_time_chart(good: pd.DataFrame) -> None:
     _plot(fig, "convergence_time")
 
 
+# Prix, écart brut, écart × N et temps en fonction de N
 def _convergence_charts(good: pd.DataFrame) -> None:
     """Prix, écart brut, écart × N et temps en fonction de N."""
     good = good.sort_values("nb_steps")
@@ -690,6 +729,7 @@ def _convergence_charts(good: pd.DataFrame) -> None:
     _convergence_time_chart(good)
 
 
+# Étude en fonction du nombre de pas N
 def _steps_study(reference: Parameters) -> None:
     """Étude en fonction du nombre de pas N."""
     text = st.text_input("N à comparer (20 valeurs maximum)", "5,10,20,50,100,200,400")
@@ -705,6 +745,7 @@ def _steps_study(reference: Parameters) -> None:
     _csv_download(result, "convergence.csv", "convergence_csv")
 
 
+# Grille de strikes régulière puis étude pour quelques N
 def _strike_compute(reference: Parameters, minimum: float, maximum: float, count: int,
                     text: str) -> pd.DataFrame:
     """Grille de strikes régulière puis étude pour quelques N."""
@@ -714,6 +755,7 @@ def _strike_compute(reference: Parameters, minimum: float, maximum: float, count
                         _number_list(text, True, 4))
 
 
+# Écart arbre − Black-Scholes selon le strike, une courbe par N
 def _strike_chart(result: pd.DataFrame) -> None:
     """Écart arbre − Black-Scholes selon le strike, une courbe par N."""
     fig = go.Figure()
@@ -726,6 +768,7 @@ def _strike_chart(result: pd.DataFrame) -> None:
     _plot(fig, "strike_error")
 
 
+# Étude en fonction du strike, pour quelques N
 def _strike_study(reference: Parameters, params: Parameters) -> None:
     """Étude en fonction du strike, pour quelques N."""
     left, middle, right = st.columns(3)
@@ -744,6 +787,7 @@ def _strike_study(reference: Parameters, params: Parameters) -> None:
         _csv_download(result, "convergence_strike.csv", "strike_csv")
 
 
+# Comparer l'arbre à Black-Scholes selon N ou selon le strike
 def _convergence_page(params: Parameters) -> None:
     """Comparer l'arbre à Black-Scholes selon N ou selon le strike."""
     st.subheader("Convergence vers Black-Scholes")
@@ -770,6 +814,7 @@ def _threshold_bar(display: pd.DataFrame, column: str, ylabel: str, color: str,
     _plot(fig, key)
 
 
+# Nœuds, temps et écart de prix pour chaque seuil
 def _pruning_charts(good: pd.DataFrame) -> None:
     """Nœuds, temps et écart de prix pour chaque seuil."""
     display = good.assign(label=good.threshold.map("{:g}".format))
@@ -783,11 +828,13 @@ def _pruning_charts(good: pd.DataFrame) -> None:
                    "pruning_gap")
 
 
+# Lire la liste des seuils puis lancer la comparaison
 def _pruning_thresholds(target: Parameters, text: str, steps: int) -> pd.DataFrame:
     """Lire la liste des seuils puis lancer la comparaison."""
     return pruning_study(target, _number_list(text), steps)
 
 
+# Comparer plusieurs seuils de pruning au même nombre de pas
 def _pruning_page(params: Parameters) -> None:
     """Comparer plusieurs seuils de pruning au même nombre de pas."""
     st.subheader("Mesurer l’effet du pruning")
@@ -830,11 +877,13 @@ def _four_price_chart(frame: pd.DataFrame, x: str, xlabel: str, key: str) -> Non
     }, xlabel, "Prix (€)"), key)
 
 
+# Lire les montants cash puis lancer l'étude
 def _cash_amounts(target: Parameters, text: str) -> pd.DataFrame:
     """Lire les montants cash puis lancer l'étude."""
     return dividend_study(target, _number_list(text, False, 15))
 
 
+# Faire varier le dividende cash D (date choisie pour l'étude)
 def _cash_study(target: Parameters, params: Parameters) -> tuple[object | None, str, str]:
     """Faire varier le dividende cash D (date choisie pour l'étude)."""
     text = st.text_input("Montants cash en euros", "0,1,2,3,4")
@@ -854,6 +903,7 @@ def _cash_study(target: Parameters, params: Parameters) -> tuple[object | None, 
     return result, "dividend_amount", "Dividende cash D (€)"
 
 
+# Une ligne de quatre prix par rendement continu q (en %)
 def _yield_compute(target: Parameters, text: str) -> pd.DataFrame:
     """Une ligne de quatre prix par rendement continu q (en %)."""
     rows = []
@@ -865,6 +915,7 @@ def _yield_compute(target: Parameters, text: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# Faire varier le rendement continu q, sans dividende cash
 def _yield_study(target: Parameters) -> tuple[object | None, str, str]:
     """Faire varier le rendement continu q, sans dividende cash."""
     text = st.text_input("Rendements continus en %", "0,1,2,3,4", key="yield_list")
@@ -876,6 +927,7 @@ def _yield_study(target: Parameters) -> tuple[object | None, str, str]:
     return result, "yield_percent", "Rendement continu q (%)"
 
 
+# Effet du cash D ou du rendement q sur les quatre contrats
 def _dividend_tab(params: Parameters) -> None:
     """Effet du cash D ou du rendement q sur les quatre contrats."""
     rate_zero = st.checkbox("Fixer le taux à 0 % pour cette étude (cas du PDF)", value=True)
@@ -892,11 +944,13 @@ def _dividend_tab(params: Parameters) -> None:
         _csv_download(result, "impact_dividendes.csv", "dividend_csv")
 
 
+# Convertir les taux saisis en % puis lancer l'étude
 def _rate_values(params: Parameters, text: str) -> pd.DataFrame:
     """Convertir les taux saisis en % puis lancer l'étude."""
     return rate_study(params, [value / 100.0 for value in _number_list(text, False, 15)])
 
 
+# Prix et primes américaines pour des taux positifs et négatifs
 def _rate_tab(params: Parameters) -> None:
     """Prix et primes américaines pour des taux positifs et négatifs."""
     text = st.text_input("Taux annuels à comparer, en %", "-3,-1,0,1,3,5,7")
@@ -916,6 +970,7 @@ def _rate_tab(params: Parameters) -> None:
     _csv_download(frame, "impact_taux.csv", "rate_csv")
 
 
+# Deux onglets : dividendes, puis taux
 def _dividend_rate_page(params: Parameters) -> None:
     """Deux onglets : dividendes, puis taux."""
     st.subheader("Dividendes, taux et exercice anticipé")
@@ -960,6 +1015,7 @@ GUIDE_SECTIONS = (
 )
 
 
+# Mode d'emploi de l'application et rappels du modèle
 def _guide_page(params: Parameters) -> None:
     """Mode d'emploi de l'application et rappels du modèle."""
     st.subheader("Prendre en main le laboratoire")
@@ -998,6 +1054,7 @@ HERO = ('<div class="hero"><div class="eyebrow">Binomial · Trinomial · Exercic
         'comprends chaque décision d’exercice.</p></div>')
 
 
+# Rappel compact du scénario appliqué, en haut de chaque page
 def _scenario_caption(params: Parameters) -> None:
     """Rappel compact du scénario appliqué, en haut de chaque page."""
     st.caption(f"SCÉNARIO APPLIQUÉ · {params.option_type} "
@@ -1011,6 +1068,7 @@ def _scenario_caption(params: Parameters) -> None:
                    "il n’intervient pas dans cette valorisation.")
 
 
+# Construire la page : style, formulaire, bandeau puis page choisie
 def main() -> None:
     """Construire la page : style, formulaire, bandeau puis page choisie."""
     st.set_page_config(page_title="Arbres d’options · Laboratoire", page_icon="📈",
