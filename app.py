@@ -405,7 +405,9 @@ def _greeks_section(params: Parameters) -> None:
     except (ValueError, ArithmeticError, RuntimeError) as exc:
         _show_errors(exc)
         return
-    for col, (name, label, fmt) in zip(st.columns(6), GREEK_DISPLAY):
+    # Deux lignes de trois indicateurs : les valeurs restent lisibles en entier.
+    columns = st.columns(3) + st.columns(3)
+    for col, (name, label, fmt) in zip(columns, GREEK_DISPLAY):
         col.metric(label, fmt.format(greeks[name]))
     st.caption("Différences finies sur l’arbre (cours p. 17), même N et même pruning. "
                "Vega, vomma, vanna : pour +1 point de vol ; theta : pour 1 jour.")
