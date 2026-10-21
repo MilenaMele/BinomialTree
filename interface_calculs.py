@@ -4,7 +4,8 @@
 # Il fait le lien entre les champs de l'écran et le moteur
 # ``arbre_binomial.py`` : il valide les paramètres, construit les arbres,
 # lance les études (convergence, pruning, dividendes, taux, comparaison
-# des exercices) et renvoie des tableaux pandas prêts à afficher.
+# des exercices) et renvoie des tableaux pandas prêts à afficher. Il
+# prépare aussi les grecques (module grecques.py) et le P&L de couverture.
 #
 # =============================================================================
 
@@ -31,6 +32,8 @@ import pandas as pd
 from arbre_binomial import Market, Model, Option, Tree
 from convergence import Convergence
 from debug_arbre import DebugTree
+from grecques import (GREEK_NAMES, TreeGreeks, black_scholes_greeks, taylor_pnl,
+                      tree_node_delta_gamma)
 
 
 # Ces limites protègent un lancement interactif contre un calcul involontaire
@@ -170,16 +173,21 @@ def make_tree(params: Parameters, nb_steps: int | None = None,
     steps = _validate_steps(params.nb_steps if nb_steps is None else nb_steps)
     threshold = _validate_threshold(
         params.pruning_threshold if pruning_threshold is None else pruning_threshold)
-    # Les trois objets du moteur : Model, Option et Market.
-    return Tree(
-        model=Model(params.pricing_date, steps, threshold),
-        option=Option(params.strike, params.maturity, params.option_type,
-                      params.exercise_type),
-        market=Market(spot=params.spot, rate=params.rate, vol=params.vol,
-                      dividend_yield=params.dividend_yield,
-                      dividend_amount=params.dividend_amount,
-                      ex_dividend_date=params.ex_dividend_date),
-    ).build()
+    market, option, model = _engine_objects(params, steps, threshold)
+    return Tree(model=model, option=option, market=market).build()
+
+
+# Les trois objets du moteur (Market, Option, Model) à partir de l'écran
+def _engine_objects(params: Parameters, nb_steps: int,
+                    threshold: float) -> tuple[Market, Option, Model]:
+    """Traduire les paramètres validés en objets du moteur, sans construire."""
+    market = Market(spot=params.spot, rate=params.rate, vol=params.vol,
+                    dividend_yield=params.dividend_yield,
+                    dividend_amount=params.dividend_amount,
+                    ex_dividend_date=params.ex_dividend_date)
+    option = Option(params.strike, params.maturity, params.option_type,
+                    params.exercise_type)
+    return market, option, Model(params.pricing_date, nb_steps, threshold)
 
 
 # Ne jamais afficher un prix NaN/inf comme s'il était un résultat valide
@@ -665,6 +673,7 @@ def check_tree(params: Parameters) -> dict:
     try:
         tree = make_tree(params)
         _price(tree)
+        # Les messages imprimés par check() deviennent le rapport affiché.
         debugger = DebugTree(tree)
         log = StringIO()
         with redirect_stdout(log):
@@ -673,3 +682,140 @@ def check_tree(params: Parameters) -> dict:
     finally:
         del tree
         gc.collect()
+
+
+# -----------------------------------------------------------------------------
+# Grecques et couverture (page « Grecques & couverture »).
+# -----------------------------------------------------------------------------
+# Unité affichée de chaque grecque (vol en points, theta par jour)
+GREEK_UNITS = {
+    "delta": "€ par € de spot", "gamma": "delta par € de spot",
+    "vega": "€ pour +1 point de vol", "vomma": "vega pour +1 point de vol",
+    "vanna": "delta pour +1 point de vol", "theta": "€ par jour",
+}
+
+
+# Objet de calcul des grecques de l'arbre pour le scénario de l'écran
+def _tree_greeks(params: Parameters, vol_shift: float) -> TreeGreeks:
+    """TreeGreeks avec le N et le pruning du scénario principal."""
+    params.validate()
+    market, option, model = _engine_objects(params, params.nb_steps,
+                                            params.pruning_threshold)
+    return TreeGreeks(market, option, model, vol_shift)
+
+
+# Grecques de Black-Scholes si elles sont une référence exacte, sinon None
+def _black_greeks(params: Parameters) -> tuple[dict[str, float] | None, str]:
+    """Référence exacte seulement pour une européenne sans cash actif."""
+    if params.exercise_type == "American":
+        return None, "Pas de grecques Black-Scholes exactes pour une américaine."
+    if has_active_cash(params):
+        return None, "Pas de grecques Black-Scholes exactes avec un dividende cash actif."
+    if params.vol <= 0 or params.strike <= 0:
+        return None, "Black-Scholes demande une volatilité et un strike positifs."
+    market, option, _ = _engine_objects(params, 1, 0.0)
+    return (black_scholes_greeks(market, option, params.pricing_date),
+            "Référence exacte : Black-Scholes avec rendement continu q.")
+
+
+# Delta et gamma lus sur les trois nœuds du pas 2 (astuce du cours)
+def _node_delta_gamma(params: Parameters) -> tuple[float, float]:
+    """Un seul arbre : delta et gamma déduits des nœuds voisins du spot."""
+    tree = None
+    try:
+        tree = make_tree(params)
+        return tree_node_delta_gamma(tree)
+    finally:
+        del tree
+        gc.collect()
+
+
+# Américaine : correction par variable de contrôle (européenne Black-Scholes)
+def _control_variate(params: Parameters, values: dict[str, float],
+                     vol_shift: float) -> dict[str, float] | None:
+    """Grecque américaine + (Black-Scholes européenne − arbre européen).
+
+    L'erreur de discrétisation de l'arbre varie avec σ et biaise surtout le
+    vomma ; elle est presque la même pour l'américaine et l'européenne du
+    même arbre. On la mesure sur l'européenne, où Black-Scholes est exact.
+    """
+    european = replace(params, exercise_type="European")
+    black, _ = _black_greeks(european)
+    if params.exercise_type != "American" or black is None:
+        return None
+    tree_european = _tree_greeks(european, vol_shift).all()
+    return {name: values[name] + black[name] - tree_european[name] for name in GREEK_NAMES}
+
+
+# Tableau comparatif : arbre, Black-Scholes et écart pour chaque grecque
+def _greek_table(values: dict[str, float], black: dict[str, float] | None,
+                 nodes: tuple[float, float],
+                 corrected: dict[str, float] | None) -> pd.DataFrame:
+    """Une ligne par grecque, avec l'unité et la méthode des nœuds."""
+    rows = []
+    for name in GREEK_NAMES:
+        reference = None if black is None else black[name]
+        node_value = {"delta": nodes[0], "gamma": nodes[1]}.get(name)
+        rows.append({"greek": name, "tree": values[name], "tree_nodes": node_value,
+                     "tree_control_variate": None if corrected is None else corrected[name],
+                     "black_scholes": reference,
+                     "gap": None if reference is None else values[name] - reference,
+                     "unit": GREEK_UNITS[name]})
+    return pd.DataFrame(rows)
+
+
+# Prix, six grecques, comparaison Black-Scholes et méthode des nœuds
+def greeks_summary(params: Parameters, vol_shift: float = 0.01) -> dict:
+    """Toutes les grecques du scénario, en nombres et en tableau.
+
+    Chaque grecque de l'arbre vient de différences finies centrées
+    (``OneDimDerivative``) ; le theta est la variation sur un jour.
+    """
+    gc.collect()
+    start = perf_counter()
+    values = _tree_greeks(params, vol_shift).all()
+    black, reason = _black_greeks(params)
+    nodes = _node_delta_gamma(params)
+    corrected = _control_variate(params, values, vol_shift)
+    return {"values": values, "table": _greek_table(values, black, nodes, corrected),
+            "black_reason": reason, "seconds": perf_counter() - start}
+
+
+# Delta et gamma pour une liste de spots (profil utile à la couverture)
+def greeks_by_spot(params: Parameters, spots: list[float]) -> pd.DataFrame:
+    """Prix, delta et gamma de l'arbre pour chaque spot de la liste."""
+    values = [_finite_number("Le spot", spot)
+              for spot in _study_values("La liste des spots", spots, MAX_STRIKES)]
+    if any(spot <= 0 for spot in values):
+        raise ValueError("Les spots doivent être strictement positifs.")
+    rows = []
+    # Un objet TreeGreeks par spot : 3 arbres (S/α, S, S×α) chacun.
+    for spot in values:
+        greeks = _tree_greeks(replace(params, spot=spot), 0.01)
+        rows.append({"spot": spot, "price": greeks.price(spot, params.vol, 0),
+                     "delta": greeks.delta(), "gamma": greeks.gamma()})
+    return pd.DataFrame(rows)
+
+
+# Variation de valeur : approximation par les grecques et vrai repricing
+def taylor_check(params: Parameters, greeks: dict[str, float], spot_move: float,
+                 vol_move_points: float, days: int) -> dict[str, float]:
+    """Comparer le P&L de Taylor au prix recalculé après le choc.
+
+    Le choc : spot + ``spot_move`` €, vol + ``vol_move_points`` points,
+    date de calcul avancée de ``days`` jours (maturité inchangée).
+    """
+    shocked = replace(params, spot=params.spot + spot_move,
+                      vol=params.vol + vol_move_points / 100.0,
+                      pricing_date=params.pricing_date + dt.timedelta(days=days))
+    result = taylor_pnl(greeks, spot_move, vol_move_points, days)
+    tree = None
+    try:
+        tree = make_tree(shocked)
+        result["repriced"] = _price(tree) - greeks["price"]
+    finally:
+        del tree
+        gc.collect()
+    # P&L d'un portefeuille option − Δ actions, recalculé exactement.
+    result["repriced_hedged"] = result["repriced"] - greeks["delta"] * spot_move
+    return result

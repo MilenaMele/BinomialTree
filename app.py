@@ -35,15 +35,15 @@ import streamlit.components.v1 as components
 
 from interface_calculs import (
     EXERCISE_SCENARIOS, Parameters, calculate_summary, check_tree, convergence_study,
-    debug_tree, dividend_study, exercise_comparison, has_active_cash, pruning_study,
-    rate_study, strike_study,
+    debug_tree, dividend_study, exercise_comparison, greeks_by_spot, greeks_summary,
+    has_active_cash, pruning_study, rate_study, strike_study, taylor_check,
 )
 from interface_exports import profile_archive, scenario_json
 
 # Pages de la navigation, palette des graphiques et bornes des dates.
 PAGES = (
-    "Prix & comparaison", "Valeur & exercice", "Arbre & diagnostics",
-    "Convergence", "Pruning", "Dividendes & taux", "Guide",
+    "Prix & comparaison", "Valeur & exercice", "Grecques & couverture",
+    "Arbre & diagnostics", "Convergence", "Pruning", "Dividendes & taux", "Guide",
 )
 COLORS = ("#2563eb", "#0891b2", "#f59e0b", "#8b5cf6", "#059669")
 GITHUB = "https://github.com/BChalet/benjaminchalet"
@@ -982,6 +982,152 @@ def _dividend_rate_page(params: Parameters) -> None:
 
 
 # =============================================================================
+# 8 bis. PAGE « GRECQUES & COUVERTURE » (cours p. 17)
+# =============================================================================
+# Libellés des colonnes du tableau des grecques
+GREEK_COLUMNS = {
+    "greek": "Grecque", "tree": "Arbre (différences finies)",
+    "tree_nodes": "Arbre (nœuds voisins)",
+    "tree_control_variate": "Arbre + variable de contrôle",
+    "black_scholes": "Black-Scholes", "gap": "Arbre − Black-Scholes", "unit": "Unité",
+}
+# Libellés des termes du développement de Taylor
+TAYLOR_LABELS = {
+    "delta": "Δ · dS", "gamma": "½ Γ · dS²", "vega": "vega · dσ", "vomma": "½ vomma · dσ²",
+    "vanna": "vanna · dS · dσ", "theta": "θ · jours", "total": "Total (option seule)",
+    "hedged_total": "Total (option − Δ actions)", "repriced": "Repricing exact (option seule)",
+    "repriced_hedged": "Repricing exact (option − Δ actions)",
+}
+
+
+# Six indicateurs en haut de la page : prix et grecques principales
+def _greek_metrics(values: dict) -> None:
+    """Prix, delta, gamma, vega, vanna et theta du contrat choisi."""
+    cols = st.columns(6)
+    cols[0].metric("Prix", f"{values['price']:.4f} €")
+    cols[1].metric("Delta Δ", f"{values['delta']:.4f}")
+    cols[2].metric("Gamma Γ", f"{values['gamma']:.5f}")
+    cols[3].metric("Vega (1 pt)", f"{values['vega']:.4f} €")
+    cols[4].metric("Vanna (1 pt)", f"{values['vanna']:.5f}")
+    cols[5].metric("Theta (1 jour)", f"{values['theta']:.4f} €")
+
+
+# Tableau des grecques et explications des méthodes
+def _greek_table_view(result: dict) -> None:
+    """Tableau comparatif ; les colonnes vides (sans objet) sont masquées."""
+    table = result["table"].dropna(axis=1, how="all").rename(columns=GREEK_COLUMNS)
+    st.dataframe(table, hide_index=True, width="stretch")
+    st.caption(result["black_reason"] + f" Calcul : {result['seconds']:.2f} s.")
+    # Rappel des méthodes de calcul utilisées par le module grecques.py.
+    with st.expander("Comment ces grecques sont calculées"):
+        st.write("Différences finies centrées (cours p. 17) : chaque prix décalé "
+                 "reconstruit un arbre. Le spot est décalé d’un cran de grille "
+                 "(S×α et S/α, les nœuds voisins de la racine), la volatilité de "
+                 "±1 point ; le theta est la variation du prix quand un jour passe. "
+                 "« Nœuds voisins » : delta et gamma lus sur les trois nœuds du pas 2, "
+                 "sans nouvel arbre. Pour une américaine sans cash, la variable de "
+                 "contrôle corrige l’erreur de l’arbre mesurée sur l’européenne : "
+                 "c’est la valeur la plus fiable pour le vomma.")
+    _csv_download(result["table"], "grecques.csv", "greeks_csv")
+
+
+# Quantité de sous-jacent à détenir pour couvrir le contrat
+def _hedge_advice(values: dict, params: Parameters) -> None:
+    """Couverture delta d'une option vendue (ou achetée)."""
+    delta = values["delta"]
+    action = "acheter" if delta > 0 else "vendre"
+    st.info(f"Couverture delta : pour **1 option vendue**, {action} **{abs(delta):.4f}** "
+            f"action(s), soit {abs(delta) * params.spot:.2f} € de sous-jacent. "
+            "Pour une option achetée, faire l’inverse. Le gamma indique de combien "
+            f"ce delta change si le spot bouge de 1 € ({values['gamma']:.5f}).")
+
+
+# Calcul du P&L d'un choc (Taylor puis repricing), lancé par un bouton
+def _taylor_compute(params: Parameters, values: dict, spot_move: float,
+                    vol_move: float, days: int) -> pd.DataFrame:
+    """Tableau des termes de Taylor et du repricing exact."""
+    result = taylor_check(params, values, spot_move, vol_move, days)
+    return pd.DataFrame({"Terme": [TAYLOR_LABELS[key] for key in result],
+                         "Variation (€)": list(result.values())})
+
+
+# Saisie d'un choc de marché et comparaison Taylor / repricing
+def _taylor_section(params: Parameters, values: dict) -> None:
+    """P&L de l'option et du portefeuille couvert pour un choc donné."""
+    st.markdown("#### P&L après un choc de marché")
+    left, middle, right = st.columns(3)
+    spot_move = float(left.number_input("Variation du spot dS (€)", value=1.0, step=0.5))
+    vol_move = float(middle.number_input("Variation de vol dσ (points)", value=0.0,
+                                         step=0.5))
+    days = int(right.number_input("Jours écoulés", min_value=0, value=1, step=1))
+    result = _study_result("taylor_result", (params, values["price"], spot_move, vol_move,
+                                             days),
+                           partial(_taylor_compute, params, values, spot_move, vol_move, days),
+                           "Calculer le P&L du choc")
+    if result is not None:
+        st.dataframe(result, hide_index=True, width="stretch")
+        st.caption("Le portefeuille « option − Δ actions » est couvert en delta : il reste "
+                   "surtout le gamma (gain si le spot bouge, pour une option achetée) et "
+                   "le theta (coût du temps). L’écart avec le repricing mesure les termes "
+                   "d’ordre supérieur.")
+
+
+# Delta et gamma pour une grille de spots
+def _spot_profile_compute(params: Parameters, minimum: float, maximum: float,
+                          count: int) -> pd.DataFrame:
+    """Grille régulière de spots puis delta/gamma de l'arbre en chaque point."""
+    if not 0 < minimum < maximum:
+        raise ValueError("Il faut 0 < spot minimum < spot maximum.")
+    return greeks_by_spot(params, np.linspace(minimum, maximum, count).tolist())
+
+
+# Graphiques du delta et du gamma en fonction du spot
+def _spot_profile_section(params: Parameters) -> None:
+    """Profil du delta et du gamma : utile pour anticiper les réajustements."""
+    st.markdown("#### Delta et gamma selon le spot")
+    left, middle, right = st.columns(3)
+    minimum = float(left.number_input("Spot minimum", min_value=0.01,
+                                      value=round(params.spot * 0.7, 2)))
+    maximum = float(middle.number_input("Spot maximum", min_value=0.01,
+                                        value=round(params.spot * 1.3, 2)))
+    count = int(right.number_input("Nombre de spots", 3, 41, 13))
+    result = _study_result("spot_profile_result", (params, minimum, maximum, count),
+                           partial(_spot_profile_compute, params, minimum, maximum, count),
+                           "Tracer delta et gamma")
+    if result is None:
+        return
+    a, b = st.columns(2)
+    # Un graphique par grecque, en fonction du spot.
+    with a:
+        _plot(_line_figure(result, "spot", {"delta": "Delta"}, "Spot S₀ (€)", "Delta"),
+              "spot_delta")
+    with b:
+        _plot(_line_figure(result, "spot", {"gamma": "Gamma"}, "Spot S₀ (€)", "Gamma"),
+              "spot_gamma")
+    _csv_download(result, "delta_gamma_spot.csv", "spot_profile_csv")
+
+
+# Page complète : grecques, couverture, choc et profil en spot
+def _greeks_page(params: Parameters) -> None:
+    """Grecques du contrat choisi et outils de delta hedging."""
+    st.subheader("Grecques et couverture delta")
+    st.write("Les grecques sont calculées sur l’arbre par différences finies, comme dans "
+             "le cours (classe OneDimDerivative), avec le N et le pruning du scénario.")
+    vol_shift = float(st.number_input("Décalage de volatilité (points)", 0.1, 10.0, 1.0,
+                                      step=0.5, key="greeks_vol_shift"))
+    result = _study_result("greeks_result", (params, vol_shift),
+                           partial(greeks_summary, params, vol_shift / 100.0),
+                           "Calculer les grecques")
+    if result is None:
+        return
+    _greek_metrics(result["values"])
+    _greek_table_view(result)
+    _hedge_advice(result["values"], params)
+    _taylor_section(params, result["values"])
+    _spot_profile_section(params)
+
+
+# =============================================================================
 # 9. PAGE « GUIDE »
 # =============================================================================
 GUIDE_ROWS = (
@@ -989,6 +1135,8 @@ GUIDE_ROWS = (
                            "et référence Black-Scholes."),
     ("Valeur & exercice", "Moyenne actualisée, premier exercice, cumul, survie, "
                           "conservation de valeur et comparaison des contrats (p. 23)."),
+    ("Grecques & couverture", "Delta, gamma, vega, vomma, vanna, theta ; couverture delta "
+                              "et P&L estimé après un choc de marché."),
     ("Arbre & diagnostics", "SVG avec zoom, liens, exercice, pruning et contrôles."),
     ("Convergence", "Écart à Black-Scholes selon N ou le strike, ordre d’erreur et temps."),
     ("Pruning", "Prix, nombre de nœuds et durée selon le seuil d’élagage."),
@@ -1078,8 +1226,9 @@ def main() -> None:
     st.markdown(HERO, unsafe_allow_html=True)
     _scenario_caption(params)
     # Seule la page choisie est calculée (les autres ne coûtent rien).
-    pages = dict(zip(PAGES, (_price_page, _profile_page, _debug_page, _convergence_page,
-                             _pruning_page, _dividend_rate_page, _guide_page)))
+    pages = dict(zip(PAGES, (_price_page, _profile_page, _greeks_page, _debug_page,
+                             _convergence_page, _pruning_page, _dividend_rate_page,
+                             _guide_page)))
     pages[page](params)
 
 
