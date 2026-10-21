@@ -1,11 +1,10 @@
 # =============================================================================
-# Courbes de valeur et d'exercice par date (cours, pages 22–23).
+# Courbes de valeur et d'exercice par date.
 #
-# À quoi sert ce module ?
-#     À partir d'un arbre construit, il trace la valeur moyenne actualisée
-#     de l'option date par date et les probabilités d'exercice, puis les
-#     exporte en PNG/SVG et en CSV. L'interface l'utilise pour le bouton
-#     « Préparer les graphiques PNG/SVG » de la page « Valeur & exercice ».
+# À partir d'un arbre construit, il trace la valeur moyenne actualisée
+# de l'option date par date et les probabilités d'exercice, puis les
+# exporte en PNG/SVG et en CSV. L'interface l'utilise pour le bouton
+# « Préparer les graphiques PNG/SVG » de la page « Valeur & exercice ».
 #
 # Le mot « valeur » désigne ici une MOYENNE PAR DATE dans l'arbre, et non
 # une courbe du prix en fonction du spot. Toutes les valeurs sont actualisées
@@ -19,12 +18,6 @@
 # Il ne faut donc PAS additionner les valeurs de la première courbe : un même
 # chemin peut passer plusieurs fois par une zone d'exercice.
 #
-# Exemple en ligne de commande :
-#
-#     python profils_option.py --steps 200 --output-dir resultats/profils
-#
-# Le moteur ``arbre_binomial.py`` fait tous les calculs financiers. Ce module
-# ne garde que des lignes de nombres, jamais un tableau de nœuds de l'arbre.
 # =============================================================================
 """Courbes de valeur et d'exercice par date (cours, pages 22–23)."""
 
@@ -67,7 +60,6 @@ class ProfileRow(Protocol):
     discounted_exercise_cashflow: float
     cumulative_discounted_cashflow: float
     total_value: float
-
 
 # Cet ordre est aussi celui des colonnes du CSV. Les noms sont identiques
 # aux attributs du moteur pour faciliter le passage du graphique au code.
