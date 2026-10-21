@@ -1,21 +1,12 @@
 # =============================================================================
 # Moteur de pricing : arbre recombiné à liens directs (cœur du projet).
 #
-# À quoi sert ce module ?
-#     Il construit l'arbre du sous-jacent (binomial, avec un pas trinomial
-#     au détachement d'un dividende cash), puis valorise une option
-#     call/put européenne ou américaine en remontant l'arbre. Il calcule
-#     aussi les profils par date du cours (pages 22-23) : valeur moyenne
-#     actualisée et probabilités d'exercice.
+# Construit l'arbre du sous-jacent (binomial, avec un pas trinomial
+# au détachement d'un dividende cash), puis valorise une option
+# call/put européenne ou américaine en remontant l'arbre. Il calcule
+# aussi les profils par date du cours: valeur moyenne
+# actualisée et probabilités d'exercice.
 #
-# Ce fichier est du Python « pur » : il ne connaît pas Streamlit. On peut
-# le lancer seul dans VS Code (``python arbre_binomial.py``) pour obtenir un
-# prix dans le terminal. L'interface (app.py) ne fait que l'appeler.
-#
-# Le maillage conserve ses liens ``above/below`` et ``next_up/mid/down`` :
-# aucun conteneur de nœuds n'est nécessaire pour construire ou parcourir
-# l'arbre (cours p. 18). Les collections de résultats ne contiennent que des
-# nombres et des dates.
 # =============================================================================
 """Moteur de pricing : arbre recombiné à liens directs (cœur du projet)."""
 
