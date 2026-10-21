@@ -646,7 +646,9 @@ def _svg_view(svg: str, zoom: float) -> None:
 def _debug_controls() -> tuple[int, float, str, bool, bool]:
     """Réglages propres au dessin : pas, seuil, couleur et options."""
     a, b, c = st.columns(3)
-    steps = int(a.number_input("Pas du dessin", 1, 40, 16, key="debug_steps"))
+    steps = int(a.number_input("Pas du dessin", 1, 300, 16, key="debug_steps",
+                               help="Jusqu’à 40 pas : boîtes détaillées. Au-delà : "
+                                    "un point par nœud, détails au survol."))
     threshold = float(b.number_input("Seuil du dessin", 0.0, 1.0, 1e-3,
                                      format="%.8g", key="debug_threshold"))
     colors = {"Valeur de l’option": "option", "Sous-jacent": "spot",
@@ -712,7 +714,9 @@ def _debug_page(params: Parameters) -> None:
              "Les branches orange signalent une redirection de pruning.")
     steps, threshold, color, neighbors, compare = _debug_controls()
     st.caption("Le nombre de pas et le seuil ci-dessus sont propres au dessin. "
-               "Le marché, l’option et les dates restent ceux du scénario appliqué.")
+               "Le marché, l’option et les dates restent ceux du scénario appliqué. "
+               "Au-delà de 40 pas, vue compacte : un point par nœud (taille = probabilité, "
+               "contour rouge = exercice), valeurs au survol.")
     drawing = replace(params, pruning_threshold=threshold)
     result = _study_result("debug_result", (drawing, steps, color, neighbors, compare),
                            partial(_debug_trees, drawing, steps, color, neighbors, compare),

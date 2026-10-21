@@ -35,6 +35,7 @@ Commentaires et docstrings sont rédigés en français.
 | `arbre_binomial.py` | Moteur : `Market`, `Option`, `Model`, `Node`, `TrunkNode`, `Tree` (construction, pricing, profils) |
 | `grecques.py` | Grecques par différences finies (`OneDimDerivative`, cours p. 17) |
 | `profils_option.py` | Figures Matplotlib et CSV des profils par date |
+| `dessin_compact.py` | Dessin SVG compact (un point par nœud) au-delà de 40 pas |
 | `debug_arbre.py` | Contrôles numériques de l'arbre et export SVG |
 | `convergence.py` | Prix Black-Scholes et étude de convergence |
 | `interface_calculs.py` | Pont écran → moteur : validation, études, tableaux pandas (sans Streamlit) |

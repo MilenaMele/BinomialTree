@@ -32,6 +32,7 @@ import pandas as pd
 from arbre_binomial import Market, Model, Option, Tree
 from convergence import Convergence
 from debug_arbre import DebugTree
+from dessin_compact import CompactTreeSvg
 from grecques import TreeGreeks
 
 
@@ -40,7 +41,9 @@ from grecques import TreeGreeks
 MAX_STEPS = 2_000
 MAX_STUDY_POINTS = 20
 MAX_STRIKES = 81
-MAX_DEBUG_STEPS = 40
+MAX_DEBUG_STEPS = 300
+# Au-delà de ce nombre de pas, le dessin passe en vue compacte (un point par nœud).
+DETAILED_MAX_STEPS = 40
 # Les quatre contrats comparés sur un même arbre (clé = type_exercice).
 CONTRACT_KEYS = ("call_european", "call_american", "put_european", "put_american")
 # Scénarios du graphique « probabilité d'exercice par date » (cours p. 23).
@@ -618,7 +621,8 @@ def _diagnostic(debugger: DebugTree, errors: int, report: str) -> dict:
 
 
 # Contrôler puis dessiner ; les messages imprimés deviennent le rapport
-def _checked_svg(debugger: DebugTree, color_by: str, show_neighbors: bool) -> dict:
+def _checked_svg(debugger: DebugTree, color_by: str, show_neighbors: bool,
+                 compact: bool) -> dict:
     """Contrôler puis dessiner ; les messages imprimés deviennent le rapport."""
     log = StringIO()
     # Dossier temporaire propre à cet appel : aucun fichier partagé n'est écrasé.
@@ -626,7 +630,9 @@ def _checked_svg(debugger: DebugTree, color_by: str, show_neighbors: bool) -> di
         errors = debugger.check()
         svg = ""
         # Un graphe invalide ne doit pas être présenté comme un dessin vérifié.
-        if not errors:
+        if not errors and compact:
+            svg = CompactTreeSvg(debugger.tree, color_by).to_svg()
+        elif not errors:
             path = debugger.export_svg(Path(folder) / "arbre.svg", color_by,
                                        show_neighbors, run_checks=False)
             svg = path.read_text(encoding="utf-8")
@@ -641,6 +647,8 @@ def debug_tree(params: Parameters, steps: int, color_by: str, show_neighbors: bo
 
     Le petit N est un paramètre de visualisation : il ne remplace pas le N du
     prix principal. Le graphe dessiné peut donc différer du grand arbre.
+    Au-delà de DETAILED_MAX_STEPS pas, le dessin est compact (un point par
+    nœud) et les liens entre voisins ne sont pas tracés.
     """
     params.validate()
     n = _validate_steps(steps, MAX_DEBUG_STEPS)
@@ -653,7 +661,8 @@ def debug_tree(params: Parameters, steps: int, color_by: str, show_neighbors: bo
     try:
         tree = make_tree(params, nb_steps=n)
         _price(tree)
-        return _checked_svg(DebugTree(tree), color_by, show_neighbors)
+        return _checked_svg(DebugTree(tree), color_by, show_neighbors,
+                            n > DETAILED_MAX_STEPS)
     finally:
         del tree
         gc.collect()

@@ -106,6 +106,7 @@ Seul `app.py` importe Streamlit. Les modules de calcul (`arbre_binomial.py`, `gr
 | `LANCER_STREAMLIT.bat` | Lancement Windows avec sélection d'un Python valide et installation des dépendances |
 | `arbre_binomial.py` | Données, construction du sous-jacent, pricing et profils numériques |
 | `profils_option.py` | Courbes des pages 22–23 et export des résultats en CSV |
+| `dessin_compact.py` | Dessin SVG compact (un point par nœud) pour les arbres de plus de 40 pas |
 | `debug_arbre.py` | Vérification des liens, masses et moments ; export SVG |
 | `grecques.py` | Delta, gamma, vega, vomma, vanna, theta par différences finies (cours p. 17) |
 | `convergence.py` | Comparaison européenne à Black-Scholes, sans cash, reprise du fichier joint |
