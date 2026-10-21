@@ -2,7 +2,7 @@
 # Interface Streamlit du pricer.
 #
 # Il affiche l'application web : formulaire des paramètres dans la barre
-# latérale, puis sept pages (prix, valeur & exercice, arbre, convergence,
+# latérale, puis huit pages (prix, valeur & exercice, grecques, arbre, convergence,
 # pruning, dividendes & taux, guide). 
 # Appelle ``interface_calculs`` (qui appelle le moteur ``arbre_binomial``)
 # et dessine les tableaux renvoyés avec Plotly.
