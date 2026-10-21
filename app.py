@@ -402,7 +402,7 @@ def _price_page(params: Parameters) -> None:
 
 
 # =============================================================================
-# 4. PAGE « VALEUR & EXERCICE » (cours pages 22-23)
+# 4. PAGE « VALEUR & EXERCICE » 
 # =============================================================================
 def _value_tab(frame: pd.DataFrame, result: dict) -> None:
     """Moyenne actualisée par date et contrôle de conservation de la valeur."""
@@ -500,9 +500,9 @@ def _scenario_figure(frame: pd.DataFrame, column: str, ylabel: str,
 
 # Graphique du cours p. 23 : probabilité d'exercice par date et par contrat
 def _comparison_tab(params: Parameters) -> None:
-    """Graphique du cours p. 23 : probabilité d'exercice par date et par contrat."""
+    """Graphique : probabilité d'exercice par date et par contrat."""
     st.write(f"Pour chaque date, somme des probabilités des nœuds où le {params.option_type} "
-             "est exercé (cours p. 23). Les contrats « sans dividende » ont le même forward "
+             "est exercé. Les contrats « sans dividende » ont le même forward "
              "à maturité : leur spot est ajusté, comme dans le cours.")
     keys = st.multiselect("Contrats comparés", list(EXERCISE_SCENARIOS),
                           default=list(DEFAULT_SCENARIOS), format_func=EXERCISE_SCENARIOS.get,
@@ -553,7 +553,7 @@ def _profile_page(params: Parameters) -> None:
     third.metric("Expiration sans paiement", f"{result['expiration_probability']:.2%}")
     # Un onglet par thème ; la comparaison n'est calculée que sur demande.
     values, exercises, compare, data = st.tabs((
-        "Valeur moyenne", "Exercice", "Comparer les contrats (p. 23)", "Données & exports"))
+        "Valeur moyenne", "Exercice", "Comparer les contrats", "Données & exports"))
     with values:
         _value_tab(result["profile"], result)
     with exercises:
@@ -1111,8 +1111,7 @@ def _spot_profile_section(params: Parameters) -> None:
 def _greeks_page(params: Parameters) -> None:
     """Grecques du contrat choisi et outils de delta hedging."""
     st.subheader("Grecques et couverture delta")
-    st.write("Les grecques sont calculées sur l’arbre par différences finies, comme dans "
-             "le cours (classe OneDimDerivative), avec le N et le pruning du scénario.")
+    st.write("Les grecques sont calculées sur l’arbre par différences finies, avec le N et le pruning du scénario.")
     vol_shift = float(st.number_input("Décalage de volatilité (points)", 0.1, 10.0, 1.0,
                                       step=0.5, key="greeks_vol_shift"))
     result = _study_result("greeks_result", (params, vol_shift),
@@ -1134,7 +1133,7 @@ GUIDE_ROWS = (
     ("Prix & comparaison", "Prix du contrat, quatre prix call/put européen/américain "
                            "et référence Black-Scholes."),
     ("Valeur & exercice", "Moyenne actualisée, premier exercice, cumul, survie, "
-                          "conservation de valeur et comparaison des contrats (p. 23)."),
+                          "conservation de valeur et comparaison des contrats."),
     ("Grecques & couverture", "Delta, gamma, vega, vomma, vanna, theta ; couverture delta "
                               "et P&L estimé après un choc de marché."),
     ("Arbre & diagnostics", "SVG avec zoom, liens, exercice, pruning et contrôles."),
