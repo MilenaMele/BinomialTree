@@ -1,7 +1,5 @@
 # Arbres binomiaux/trinomiaux : valeur, exercice et débogage SVG
 
-Cette version part des deux fichiers **joints le 16 octobre 2026**, `arbre_binomial.py` et `convergence.py`. Les autres fichiers utiles proviennent du dépôt `benjaminchalet`. Les classes et les liens directs de la collègue sont conservés. Les ajouts sont commentés en français dans le code.
-
 ## Interface Streamlit : tout explorer depuis un navigateur
 
 L'interface rassemble les fonctions existantes dans une application locale. Le moteur de calcul reste celui d'`arbre_binomial.py` : Streamlit lui transmet les paramètres et affiche les résultats. Aucun calcul de grec n'a été ajouté.
