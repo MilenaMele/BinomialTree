@@ -198,15 +198,3 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-
-# -----------------------------------------------------------------------------
-# Lecture des courbes (cours p24 et suivantes)
-# -----------------------------------------------------------------------------
-# Le payoff possède un coude au strike. Sa position entre deux nœuds change
-# lorsque N varie : l'erreur peut osciller et n'est pas monotone. Une bande
-# bornée pour N*(prix_arbre-prix_Black) est compatible avec un ordre 1/N ;
-# cela ne signifie pas que chaque erreur individuelle est exactement C/N.
-#
-# Sans pruning, il y a (N+1)*(N+2)/2 nœuds dans le cas binomial standard.
-# Le temps et la mémoire sont donc d'ordre N². L'étude de convergence garde
-# un seuil nul pour isoler l'erreur de discrétisation.
